@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDA 画线算法演示</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.5);
+            --point1: #a855f7;
+            --point2: #ec4899;
+            --line-color: rgba(248, 113, 113, 0.8);
+            --cell-bg: rgba(15, 23, 42, 0.6);
+            --cell-border: rgba(51, 65, 85, 0.8);
+            --cell-highlight: rgba(56, 189, 248, 0.3);
+            --cell-active: rgba(56, 189, 248, 0.8);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(168, 85, 247, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.15), transparent 25%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            align-items: center;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #38bdf8, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            max-width: 650px;
+            margin: 0 auto;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        .container {
+            display: flex;
+            gap: 2rem;
+            max-width: 1200px;
+            width: 100%;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .grid-wrapper {
+            position: relative;
+            background: var(--panel-bg);
+            padding: 2rem 2rem 2.5rem 2.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .axis-labels-y {
+            position: absolute;
+            left: 0.8rem;
+            top: 2rem;
+            height: 450px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .axis-labels-x {
+            position: absolute;
+            bottom: 0.8rem;
+            left: 2.5rem;
+            width: 450px;
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(11, 40px);
+            grid-template-rows: repeat(11, 40px);
+            gap: 1px;
+            background: var(--cell-border);
+            border: 1px solid var(--cell-border);
+            position: relative;
+        }
+
+        .cell {
+            background-color: var(--cell-bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .cell:hover {
+            background-color: var(--cell-highlight);
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .cell.start-point {
+            background-color: var(--point1) !important;
+            color: white;
+            box-shadow: 0 0 15px var(--point1);
+            z-index: 2;
+        }
+
+        .cell.end-point {
+            background-color: var(--point2) !important;
+            color: white;
+            box-shadow: 0 0 15px var(--point2);
+            z-index: 2;
+        }
+
+        .cell.path-point {
+            background-color: var(--cell-active);
+            color: white;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+            animation: pulse-glow 2s infinite;
+        }
+
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 5px var(--accent-glow); }
+            50% { box-shadow: 0 0 15px var(--accent-glow); }
+            100% { box-shadow: 0 0 5px var(--accent-glow); }
+        }
+
+        /* SVG Overlay for exact line */
+        #lineOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .info-panel {
+            background: var(--panel-bg);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            width: 420px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            color: #fff;
+            margin-bottom: 0.8rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0.5rem;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .control-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.8rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .badge {
+            padding: 0.3rem 0.6rem;
+            border-radius: 1rem;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+        .badge.p1 { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+        .badge.p2 { background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); }
+
+        button {
+            background: linear-gradient(135deg, #38bdf8, #2563eb);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 0.5rem;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(1px);
+        }
+        
+        button:disabled {
+            background: #475569;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.8rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .stat-card.full-width {
+            grid-column: span 2;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 0.3rem;
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--accent);
+            font-family: monospace;
+        }
+
+        .table-container {
+            max-height: 250px;
+            overflow-y: auto;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            text-align: center;
+            padding: 0.6rem 0.4rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        th {
+            background: rgba(15, 23, 42, 0.9);
+            position: sticky;
+            top: 0;
+            font-weight: 600;
+            color: var(--text-muted);
+            z-index: 5;
+        }
+
+        td {
+            font-family: monospace;
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>DDA 算法原理解析</h1>
+    <p class="subtitle">
+        数字微分分析仪 (Digital Differential Analyzer) 是一种用于在光栅网格上画直线的算法。<br>
+        它通过增量计算，消除了乘法运算，从而提高计算速度。<br/>
+        <strong style="color: var(--accent);">请在下方网格中依次点击选择「起点」和「终点」。</strong>
+    </p>
+</header>
+
+<div class="container">
+    <div class="grid-wrapper">
+        <div class="axis-labels-y" id="axisY"></div>
+        <div class="grid" id="pixelGrid">
+            <!-- Grid cells and SVG injected by JS -->
+        </div>
+        <div class="axis-labels-x" id="axisX"></div>
+    </div>
+
+    <div class="info-panel">
+        <div>
+            <h3>1. 点坐标</h3>
+            <div class="controls">
+                <div class="control-group">
+                    <span class="badge p1">起点 (x0, y0)</span>
+                    <span id="p1-coord" style="font-family: monospace; font-size: 1.1rem; color: var(--text-muted)">未选择</span>
+                </div>
+                <div class="control-group">
+                    <span class="badge p2">终点 (x1, y1)</span>
+                    <span id="p2-coord" style="font-family: monospace; font-size: 1.1rem; color: var(--text-muted)">未选择</span>
+                </div>
+                <button id="resetBtn">重置网格</button>
+            </div>
+        </div>
+
+        <div>
+            <h3>2. DDA 增量计算</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Δx (dx)</div>
+                    <div class="stat-value" id="stat-dx">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Δy (dy)</div>
+                    <div class="stat-value" id="stat-dy">-</div>
+                </div>
+                <div class="stat-card full-width">
+                    <div class="stat-label">总步数 steps = max(|dx|, |dy|)</div>
+                    <div class="stat-value" id="stat-steps">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">x 增量 (dx/steps)</div>
+                    <div class="stat-value" id="stat-xinc">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">y 增量 (dy/steps)</div>
+                    <div class="stat-value" id="stat-yinc">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>3. 生成的像素点</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>X 实际值</th>
+                            <th>Y 实际值</th>
+                            <th>X 像素</th>
+                            <th>Y 像素</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultTableBody">
+                        <tr><td colspan="5" style="color:var(--text-muted); padding: 2rem;">请在左侧选择起点和终点</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const gridSize = 10;
+    const gridEl = document.getElementById('pixelGrid');
+    const axisY = document.getElementById('axisY');
+    const axisX = document.getElementById('axisX');
+    let cells = [];
+    
+    let state = {
+        p1: null,
+        p2: null,
+        calculating: false
+    };
+
+    function initGrid() {
+        gridEl.innerHTML = `
+            <svg id="lineOverlay">
+                <line id="exactLine" x1="0" y1="0" x2="0" y2="0" stroke="var(--line-color)" stroke-width="2" stroke-dasharray="6,4" style="opacity: 0; transition: opacity 0.3s;"></line>
+                <circle id="p1Dot" cx="0" cy="0" r="4" fill="var(--point1)" style="opacity:0;"></circle>
+                <circle id="p2Dot" cx="0" cy="0" r="4" fill="var(--point2)" style="opacity:0;"></circle>
+            </svg>
+        `;
+        cells = [];
+        
+        // Rows from top to bottom (y=10 down to y=0)
+        for(let y = 10; y >= 0; y--) {
+            for(let x = 0; x <= 10; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.x = x;
+                cell.dataset.y = y;
+                cell.title = `(${x}, ${y})`;
+                
+                // Optional: show coordinates inside the cell on hover or always
+                cell.innerText = `${x},${y}`;
+                
+                cell.addEventListener('click', () => handleCellClick(x, y));
+                gridEl.appendChild(cell);
+                
+                if (!cells[x]) cells[x] = [];
+                cells[x][y] = cell;
+            }
+        }
+
+        // Add axis labels
+        axisY.innerHTML = '';
+        axisX.innerHTML = '';
+        for(let y = 10; y >= 0; y--) {
+            let label = document.createElement('span');
+            label.innerText = y;
+            axisY.appendChild(label);
+        }
+        for(let x = 0; x <= 10; x++) {
+            let label = document.createElement('span');
+            label.innerText = x;
+            axisX.appendChild(label);
+        }
+    }
+
+    function handleCellClick(x, y) {
+        if (state.calculating) return;
+
+        if (!state.p1) {
+            state.p1 = {x, y};
+            cells[x][y].classList.add('start-point');
+            document.getElementById('p1-coord').innerText = `(${x}, ${y})`;
+            document.getElementById('p1-coord').style.color = 'var(--text-main)';
+        } else if (!state.p2) {
+            // Prevent choosing same point
+            if (state.p1.x === x && state.p1.y === y) return;
+            
+            state.p2 = {x, y};
+            cells[x][y].classList.add('end-point');
+            document.getElementById('p2-coord').innerText = `(${x}, ${y})`;
+            document.getElementById('p2-coord').style.color = 'var(--text-main)';
+            
+            document.getElementById('resetBtn').disabled = true;
+            runDDA();
+        }
+    }
+
+    function updateLineOverlay() {
+        if(!state.p1 || !state.p2) return;
+        
+        // 40px cell size, 1px gap between cells
+        // In a grid template, the exact center pixel of cell (x, y) is calculated as:
+        // x_offset = x * 41 + 20
+        // y_offset = (10 - y) * 41 + 20
+        const getSvgCoord = (nx, ny) => {
+            return {
+                x: nx * 41 + 20,
+                y: (10 - ny) * 41 + 20
+            };
+        };
+
+        const start = getSvgCoord(state.p1.x, state.p1.y);
+        const end = getSvgCoord(state.p2.x, state.p2.y);
+        
+        const line = document.getElementById('exactLine');
+        line.setAttribute('x1', start.x);
+        line.setAttribute('y1', start.y);
+        line.setAttribute('x2', end.x);
+        line.setAttribute('y2', end.y);
+        line.style.opacity = 1;
+
+        const p1Dot = document.getElementById('p1Dot');
+        p1Dot.setAttribute('cx', start.x);
+        p1Dot.setAttribute('cy', start.y);
+        p1Dot.style.opacity = 1;
+
+        const p2Dot = document.getElementById('p2Dot');
+        p2Dot.setAttribute('cx', end.x);
+        p2Dot.setAttribute('cy', end.y);
+        p2Dot.style.opacity = 1;
+    }
+
+    async function runDDA() {
+        state.calculating = true;
+        
+        let x0 = state.p1.x;
+        let y0 = state.p1.y;
+        let x1 = state.p2.x;
+        let y1 = state.p2.y;
+
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        
+        let steps = Math.max(Math.abs(dx), Math.abs(dy));
+        
+        let xInc = dx / steps;
+        let yInc = dy / steps;
+
+        // Update computation stats
+        document.getElementById('stat-dx').innerText = dx;
+        document.getElementById('stat-dy').innerText = dy;
+        document.getElementById('stat-steps').innerText = steps;
+        document.getElementById('stat-xinc').innerText = xInc.toFixed(3);
+        document.getElementById('stat-yinc').innerText = yInc.toFixed(3);
+
+        let tbody = document.getElementById('resultTableBody');
+        tbody.innerHTML = '';
+
+        let x = x0;
+        let y = y0;
+        
+        updateLineOverlay();
+
+        for (let i = 0; i <= steps; i++) {
+            let px = Math.round(x);
+            let py = Math.round(y);
+
+            // Create row
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${i}</td>
+                <td style="color:#f8fafc">${x.toFixed(2)}</td>
+                <td style="color:#f8fafc">${y.toFixed(2)}</td>
+                <td style="color:var(--accent); font-weight:bold">${px}</td>
+                <td style="color:var(--accent); font-weight:bold">${py}</td>
+            `;
+            tbody.appendChild(tr);
+
+            // Add path style if not start or end
+            if (!(px === x0 && py === y0) && !(px === x1 && py === y1) && px >= 0 && px <= 10 && py >=0 && py <= 10) {
+                cells[px][py].classList.add('path-point');
+            }
+
+            // Scroll the table to bottom
+            const tableContainer = document.querySelector('.table-container');
+            tableContainer.scrollTop = tableContainer.scrollHeight;
+
+            // Wait briefly to animate the step
+            await new Promise(r => setTimeout(r, 200));
+
+            x += xInc;
+            y += yInc;
+        }
+        
+        state.calculating = false;
+        document.getElementById('resetBtn').disabled = false;
+    }
+
+    function reset() {
+        state = { p1: null, p2: null, calculating: false };
+        document.getElementById('p1-coord').innerText = '未选择';
+        document.getElementById('p1-coord').style.color = 'var(--text-muted)';
+        document.getElementById('p2-coord').innerText = '未选择';
+        document.getElementById('p2-coord').style.color = 'var(--text-muted)';
+        
+        document.getElementById('stat-dx').innerText = '-';
+        document.getElementById('stat-dy').innerText = '-';
+        document.getElementById('stat-steps').innerText = '-';
+        document.getElementById('stat-xinc').innerText = '-';
+        document.getElementById('stat-yinc').innerText = '-';
+        document.getElementById('resultTableBody').innerHTML = '<tr><td colspan="5" style="color:var(--text-muted); padding: 2rem;">请在左侧选择起点和终点</td></tr>';
+        
+        initGrid();
+    }
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+        if(!state.calculating) reset();
+    });
+
+    // Initialize layout on load
+    initGrid();
+</script>
+</body>
+</html>
