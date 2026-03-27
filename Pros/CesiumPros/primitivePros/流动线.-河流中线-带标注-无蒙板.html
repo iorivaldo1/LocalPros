@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <script src="/Public/js/getDataApi.js"></script>
+
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE"
+        var ip = window.location.host.split(':')[0] + ':8083';
+        const viewer = new Cesium.Viewer("cesiumContainer", {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+            // terrainProvider: await Cesium.CesiumTerrainProvider.fromUrl(
+            //     `http://${ip}/terrain/baoxin`,
+            // ),
+            skyAtmosphere: false,
+        });
+        //注册点击primitive事件
+        regClickPrimitive(viewer);
+       
+        //设置河流
+        getRiverData().then(function (data) {
+            let source = `czm_material czm_getMaterial(czm_materialInput materialInput)
+            {
+                czm_material material = czm_getDefaultMaterial(materialInput);
+                vec2 st = materialInput.st;
+                vec4 colorImage = texture(image, vec2(fract((st.s - speed * czm_frameNumber * 0.001)), st.t));
+                material.alpha = colorImage.a * color.a;
+                material.diffuse = colorImage.rgb * 1.5 ;
+                return material;
+            }`;
+
+            const material = new Cesium.Material({
+                fabric: {
+                    uniforms: {
+                        color: Cesium.Color.fromCssColorString("#7ffeff"),
+                        image: "/Public/imgs/spriteline.png",
+                        speed: 2,
+                    },
+                    source,
+                },
+                translucent: function () {
+                    return true;
+                },
+            });
+            // 材质着色的外观
+            const appearance = new Cesium.PolylineMaterialAppearance();
+            appearance.material = material;
+
+            data.features.forEach(feature => {
+                const pls = feature.geometry.paths[0]
+                var pts = []
+                pls.forEach(pl => {
+                    pts.push(pl[0])
+                    pts.push(pl[1])
+                })
+                var rivLevel = feature.attributes.level;
+                var rivName = feature.attributes.name;
+                const instance = new Cesium.GeometryInstance({
+                    geometry: new Cesium.GroundPolylineGeometry({
+                        positions: Cesium.Cartesian3.fromDegreesArray(pts),
+                        width: setRiverWidth(rivLevel)
+                    }),
+                    id: rivName
+                });
+                //添加河流primitive
+                viewer.scene.primitives.add(new Cesium.GroundPolylinePrimitive({
+                    geometryInstances: instance,
+                    appearance,
+                }));
+                //在河流的中心点处添加label
+                var riv_label_jd = calMidPointOnPolyline(pls, null, calculatePolylineLength(pls))[0]
+                var riv_label_wd = calMidPointOnPolyline(pls, null, calculatePolylineLength(pls))[1]
+
+                viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(riv_label_jd, riv_label_wd),
+                    label: {
+                        text: rivName,
+                        font: "16px sans-serif",
+                        // style: Cesium.LabelStyle.FILL,
+                        // 对齐方式(水平和竖直)
+                        // horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+                        // verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                        showBackground: true,
+                        backgroundColor: new Cesium.Color.fromBytes(0, 70, 24),
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        eyeOffset: new Cesium.Cartesian3(0, 0, -2000)
+                    },
+                    billboard: {
+                        image: setRiverBillboardImgUrl(rivLevel),
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        eyeOffset: new Cesium.Cartesian3(0, 0, -2000),
+                        pixelOffset: new Cesium.Cartesian2(0, -23),
+                        scale: 0.12
+                    },
+                });
+
+                  viewer.camera.setView({
+                    destination: Cesium.Cartesian3.fromDegrees(
+                        102.82, 28.13,
+                        120873.04
+                    ),
+                    orientation: {
+                        heading: Cesium.Math.toRadians(347.29),
+                        pitch: Cesium.Math.toRadians(-25.37),
+                        roll: 0.0,
+                    },
+                });
+            })
+        })
+
+    </script>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/bf/f3d_1.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .v_header {
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+
+        #clo_con1 {
+            right: 10px;
+        }
+
+        #reloadScene1 {
+            right: 40px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+    </div>
+
+
+    <script>
+        //使用layui的loading功能
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        var maxElevation = -Infinity;
+        var minElevation = -Infinity;
+
+        var bridgeNameList = []
+        var labelBridgeList = []
+        let geo_bbox = null;
+        var bridgeList = []
+        let geo_marker_list = []
+        let dem_marker_list = []
+
+        //设置dem范围
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')
+
+        var map = new T.Map('map', { tileSize: 512 });
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        //测试用--加入yaBridge
+        test_add_ya_bridge_point(bridgeList)
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        $('#getDem').on('click', HD1)
+
+        async function HD1() {
+            init3DViewDragResize('Window_3D')
+
+            //清除点击点(天地图和3维中)
+            clearMarkers(map,geo_marker_list,scene1,dem_marker_list)
+
+            //避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden')
+
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            const bbox_geo = await getBbox()
+
+            //选择框过大时，退出
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+
+            //数据加载进度框
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+
+            //清除scene中已有three对象
+            deleteMesh(scene1, 'mesh_compass')
+            deleteMesh(scene1, 'mesh_dem')
+            bridgeNameList.forEach(p => {
+                deleteMesh(scene1, p)
+            })
+            labelBridgeList.forEach(p => {
+                deleteMesh(scene1, p)
+            })
+
+            //dem地址
+            const DEMUrl = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            //dem数据
+            const demData = await fetch(DEMUrl)
+            const demDataClone = demData.clone()
+            //demData.clone()只能读取一次，使用demDataClone.arrayBuffer()可以多次读取
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+            //dem生成mesh
+            const mesh_dem = await c_mesh_dem(demData, camera1, 'mesh_dem')
+            scene1.add(mesh_dem)
+
+            //纹理,先获取dom(img影像和cia影像注记混合)
+            const domTile = await c_dom_img_cia(bbox_geo)
+            loadTexture(mesh_dem, domTile)
+
+            //指北针,先计算dem的bbox
+            const bbox_dem = new THREE.Box3().setFromObject(mesh_dem);
+            //compass生成mesh
+            const mesh_compass = await c_mesh_compass(bbox_dem, 'mesh_compass')
+            scene1.add(mesh_compass)
+
+            //bridge_point_list
+            const geo_point_bridge_list = await c_point_bridge(demDataArrayBuffer, bbox_dem, bridgeList, bbox_geo)
+            geo_point_bridge_list.forEach(p => {
+                scene1.add(p[0])
+                bridgeNameList.push(p[1])
+            })
+
+            //bridge_label_list,先根据范围计算字体大小
+            const fontSize = calFontSizeByGeoBBox(bbox_geo)
+            const label_bridge_list = await c_label_bridge(geo_point_bridge_list, fontSize)
+            label_bridge_list.forEach(l => {
+                scene1.add(l)
+                labelBridgeList.push(l.name)
+            })
+
+            //避免出现白模，initThreeView异步最后让其显示
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+                $('#' + 'Window_3D').css('visibility', 'visible')
+                resolve();
+            })
+
+            function animate() {
+                requestAnimationFrame(animate);
+                updateSphereSizes(geo_point_bridge_list, camera1)
+
+                //指北针始终面向camera
+                mesh_compass.lookAt(camera1.position);
+
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+
+            //在3D窗口中点击事件
+            init3DViewCLick(map,scene1, renderer1, camera1, mesh_dem);
+
+            //在rect中点击事件
+            //HD1生成的rect
+            const rect = recTool.getRectangles()[0]
+            //注册事件
+            initTDTClick(map,scene1,rect,bbox_dem,bbox_geo,mesh_dem)
+        }
+
+        $('#clo_con1').on('click', function () {
+            clearMarkers(map,geo_marker_list,scene1,dem_marker_list)
+            $('#Window_3D').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 6.5);
+        })
+
+
+
+
+
+    </script>
+</body>
+
+</html>

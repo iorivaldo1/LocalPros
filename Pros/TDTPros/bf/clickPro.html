@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCalRiverPath.js"></script>
+    <link rel="stylesheet" href="/Public/css/1.css">
+    <script src="/Public/js/geoTools.js"></script>
+    <style>
+        #mapDiv {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+            /* min-height: calc(100vh - 50px); */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapDiv">
+        <div class="scaleLine" id="line"></div>
+    </div>
+    <script>
+        var map = new T.Map("mapDiv")
+        map.getContainer().style.cursor = 'default';
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var zoom = 9;
+        var polyline_ys = [[102, 25], [103, 32], [104, 25], [105, 32]]
+        var polyline_tdt = []
+        polyline_ys.forEach(coord => {
+            polyline_tdt.push(new T.LngLat(coord[0], coord[1]))
+        })
+
+        map.centerAndZoom(new T.LngLat(103.0253, 29.9967), zoom);
+        var line = new T.Polyline(polyline_tdt, {
+            color: "#0080ff",
+            weight: 4,
+            opacity: 0.8,
+            lineStyle: "solid",
+        })
+        map.addOverLay(line);
+
+        function handler1(val, e) {
+            var point_clicked = [e.lnglat.lng, e.lnglat.lat]
+            console.log(isPointOnPolyline(polyline_ys, point_clicked))
+            console.log(val)
+        }
+
+        function handler2(e) {
+            console.log(map)
+        }
+
+        map.addEventListener("click", function (e) {
+            // handler1("X",e)
+            // handler2(e)
+            console.log(e.lnglat.lng, e.lnglat.lat)
+        })
+        const point = [102.6, 30.2];
+
+    </script>
+</body>
+
+</html>

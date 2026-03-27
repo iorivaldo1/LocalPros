@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .three_res {
+            position: absolute;
+            top: 20px;
+            right: 100px;
+            display: flex;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .three_container {
+            position: relative;
+            margin-left: 20px;
+            width: 600px;
+            height: 600px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .close_con_btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+
+
+        .query-res-table {
+            position: absolute;
+            top: 240px;
+            left: 300px;
+            background-color: #005a7b8a;
+            z-index: 450;
+        }
+
+        #query-res-header {
+            padding: 2px;
+            height: 25px;
+            cursor: move;
+            user-select: none;
+        }
+
+         #canvas1 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <button id="getDem">T</button>
+
+    <div class="three_res">
+        <div class="three_container" id="treeCon1">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="close_con_btn" id="clo_con1">X</button>
+        </div>
+    </div>
+
+    <script>
+        var maxElevation = -Infinity;
+        var minElevation = -Infinity;
+        var meshPointNameList = []
+        var meshBridgeLabelList = []
+
+        var bridgeList = []
+        var qlIconUrl = "/Public/imgs/bridge.png";
+        var icon = new T.Icon({
+            iconUrl: qlIconUrl, //请求图标图片的URL
+            iconSize: new T.Point(15, 15), //图标可视区域的大小。
+            iconAnchor: new T.Point(7.5, 7.5), //图标的定位锚点
+        });
+        $.get('http://localhost:8080/localGEO/getYABridge').then(res => {
+            res.forEach(b => {
+                const b_jd = parseFloat(b.geometry.split(' ')[0].split('(')[1]).toFixed(5)
+                const b_wd = parseFloat(b.geometry.split(' ')[1].replace(')', '')).toFixed(5)
+                bridgeList.push([b_jd, b_wd, b.bridgeName])
+                var bridge_pos_tdt = new T.LngLat(b_jd, b_wd);
+                var marker = new T.Marker(bridge_pos_tdt, {
+                    icon: icon,
+                });
+                map.addOverLay(marker);
+            })
+        })
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')//DEM范围框
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#treeCon1'), camera);
+        $('#getDem').on('click', HD1)
+
+        function HD1() {
+            $('#treeCon1').css('visibility', 'hidden')
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                const x_range = e.currentBounds.getNorthEast().lng - e.currentBounds.getSouthWest().lng
+                const y_range = e.currentBounds.getNorthEast().lat - e.currentBounds.getSouthWest().lat
+                if (x_range >= 0.08 || y_range >= 0.08) {
+                    layer.alert('框选范围过大！请重新选择范围');
+                    recTool.clear();
+                    return;
+                }
+                var loadIndex = layer.msg('数据加载中', {
+                    icon: 16,
+                    shade: 0.01,
+                    time: false
+                });
+                // var FABDEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_YA_FABDEM', e)
+                var FABDEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_SC_FABDEM', e)
+                initThree_TDT(scene1, control1, renderer1, FABDEM_WCS_UR, e, bridgeList, e.currentBounds, loadIndex)
+            })
+        }
+
+        $('#clo_con1').on('click', function () {
+            var ex_mesh = getMeshByName(scene1, 'mesh_cop')
+            if (ex_mesh) {
+                scene1.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon1').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+
+    </script>
+</body>
+
+</html>

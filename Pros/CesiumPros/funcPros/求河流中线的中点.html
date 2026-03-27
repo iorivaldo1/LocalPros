@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+
+
+    <script>
+        //    // 定义一个包含三个坐标的扁平数组
+        //     const packedArray = [1.0, 2.0, 3.0];
+
+        //     // 调用 unpack 方法来获取对应的 Cartesian3 对象
+        //     let cartesian = Cesium.Cartesian3.unpack(packedArray);
+
+        //     console.log(cartesian); // 输出: Cartesian3 { x: 1.0, y: 2.0, z: 3.0 }
+
+        // var c1 = new Cesium.Cartesian3(1,2,3);
+        // var packedArray = [];
+        // Cesium.Cartesian3.pack(c1,packedArray)
+        // console.log(packedArray)
+
+        // var pa2 = new Float32Array([0,0,0,0,0,0,0])
+        // Cesium.Cartesian3.pack(c1, pa2,2)
+        // console.log(pa2)
+
+        function calculatePolylineLength(positions, ellipsoid = Cesium.Ellipsoid.WGS84) {
+            let totalDistance = 0;
+            for (let i = 0; i < positions.length - 1; ++i) {
+                const startCartesian = Cesium.Cartographic.fromDegrees(
+                    positions[i][0],
+                    positions[i][1],
+                );
+
+                const endCartesian = Cesium.Cartographic.fromDegrees(
+                    positions[i + 1][0],
+                    positions[i + 1][1],
+                );
+                const geodesic = new Cesium.EllipsoidGeodesic(startCartesian, endCartesian, ellipsoid);
+                const segmentDistance = geodesic.surfaceDistance;
+
+                totalDistance += segmentDistance;
+            }
+
+            return totalDistance; // 转换为公里单位
+        }
+        function calDisToStart(positions, ellipsoid = Cesium.Ellipsoid.WGS84,totalDis){
+             let totalDistance = 0;
+             let disToMiddle = totalDis/2;
+             let pointIndex= 0;
+            for (let i = 0; i < positions.length - 1; ++i) {
+                const startCartesian = Cesium.Cartographic.fromDegrees(
+                    positions[i][0],
+                    positions[i][1],
+                );
+
+                const endCartesian = Cesium.Cartographic.fromDegrees(
+                    positions[i + 1][0],
+                    positions[i + 1][1],
+                );
+                const geodesic = new Cesium.EllipsoidGeodesic(startCartesian, endCartesian, ellipsoid);
+                const segmentDistance = geodesic.surfaceDistance;
+
+                totalDistance += segmentDistance;
+                if(Math.abs(totalDistance - totalDis / 2)< disToMiddle){
+                    disToMiddle = Math.abs(totalDistance - totalDis / 2);
+                    pointIndex = i;
+                }
+            }
+            console.log(disToMiddle)
+            var jd = (positions[pointIndex][0] + positions[pointIndex + 1][0])/2;
+            var wd = (positions[pointIndex][1] + positions[pointIndex + 1][1]) / 2;
+            return [jd,wd];
+        }
+
+        $.get("/Public/data/riv5.json", {}, function (data) {
+            var cnArray = data.features[0].geometry.paths
+            console.log(calDisToStart(cnArray[0],null, calculatePolylineLength(cnArray[0])))
+        })
+
+    </script>
+
+
+</body>
+
+</html>

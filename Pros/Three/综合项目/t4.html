@@ -1,0 +1,1947 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/exif.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .v_header {
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #test {
+            position: absolute;
+            bottom: 100px;
+            left: 70px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #sh_riv_polyline {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+
+        #clo_con1 {
+            right: 10px;
+        }
+
+        #reloadScene1 {
+            right: 40px;
+        }
+
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-select" id="map"></div>
+    <button class="no-select" id="getDem">T</button>
+    <!-- <button id="test">T2</button> -->
+
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+        <div class="sh_ctr_group">
+            <div class="sw_container no-select" id="sh_riv_polyline">
+                <span>河流</span>
+                <button class="switch switch_active">
+                    <span class="switch_circle circle_right"></span>
+                </button>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        function clearOverLays() {
+            demOverLayerList.forEach(ov => {
+                map.removeOverLay(ov)
+            })
+            demOverLayerList = []
+
+            geo_marker_list.forEach(gm => {
+                map.removeOverLay(gm)
+            })
+            geo_marker_list = []
+        }
+
+        //根据坐标计算行列号
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360
+            const y =
+                (1 -
+                    Math.log(
+                        Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)
+                    ) /
+                    Math.PI) /
+                2
+            const tileCount = Math.pow(2, zoom)
+            const tileCol = Math.floor(x * tileCount)
+            const tileRow = Math.floor(y * tileCount)
+
+            return [tileCol, tileRow]
+        }
+
+        //从天地图获取WMTS切片(img)
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8)
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`
+            const wmtsUrl =
+                baseUrl +
+                'REQUEST=GetTile' +
+                '&SERVICE=WMTS' +
+                '&VERSION=1.0.0' +
+                '&LAYER=img' +
+                '&STYLE=default' +
+                '&TILEMATRIXSET=w' +
+                '&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+                '&TILECOL=' +
+                tileCol +
+                '&TILEROW=' +
+                tileRow +
+                '&TILEMATRIX=' +
+                zoom
+
+            return wmtsUrl
+        }
+
+        //从天地图获取WMTS切片(cia)
+        function getTileWMTSUrlCIA(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8)
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/cia_w/wmts?`
+            const wmtsUrl =
+                baseUrl +
+                'REQUEST=GetTile' +
+                '&SERVICE=WMTS' +
+                '&VERSION=1.0.0' +
+                '&LAYER=cia' +
+                '&STYLE=default' +
+                '&TILEMATRIXSET=w' +
+                '&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+                '&TILECOL=' +
+                tileCol +
+                '&TILEROW=' +
+                tileRow +
+                '&TILEMATRIX=' +
+                zoom
+
+            return wmtsUrl
+        }
+
+        //计算瓦片行列号边界
+        function calculateBounds(tiles) {
+            const cols = tiles.map(t => t.col)
+            const rows = tiles.map(t => t.row)
+
+            return {
+                minCol: Math.min(...cols),
+                maxCol: Math.max(...cols),
+                minRow: Math.min(...rows),
+                maxRow: Math.max(...rows)
+            }
+        }
+
+        //根据行列号计算坐标
+        function tileToLngLat(tileCol, tileRow, zoom) {
+            const n = Math.pow(2, zoom)
+            const lng = (tileCol / n) * 360 - 180
+            const latRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * tileRow) / n)))
+            const lat = (latRad * 180) / Math.PI
+
+            return [lng, lat]
+        }
+
+        //根据bounds生成四条线
+        function c_bbox_line(bbox) {
+            const NE = bbox.getNorthEast()
+            const SW = bbox.getSouthWest()
+            const minX = SW.lng
+            const minY = SW.lat
+            const maxX = NE.lng
+            const maxY = NE.lat
+            const edge_left = [
+                [minX, minY],
+                [minX, maxY]
+            ]
+            const edge_top = [
+                [minX, maxY],
+                [maxX, maxY]
+            ]
+            const edge_right = [
+                [maxX, maxY],
+                [maxX, minY]
+            ]
+            const edge_bottom = [
+                [maxX, minY],
+                [minX, minY]
+            ]
+
+            return [edge_left, edge_top, edge_right, edge_bottom]
+        }
+
+        //求两线平面交点
+        function lineSegmentsIntersect(seg1, seg2, epsilon = 1e-10) {
+            const [p1, p2] = seg1;
+            const [p3, p4] = seg2;
+
+            // 计算方向向量
+            const d1x = p2[0] - p1[0];
+            const d1y = p2[1] - p1[1];
+            const d2x = p4[0] - p3[0];
+            const d2y = p4[1] - p3[1];
+
+            // 计算分母
+            const denominator = d1x * d2y - d1y * d2x;
+
+            // 线段平行或共线
+            if (Math.abs(denominator) < epsilon) {
+                return { intersects: false };
+            }
+
+            // 计算参数 t 和 u
+            const t = ((p3[0] - p1[0]) * d2y - (p3[1] - p1[1]) * d2x) / denominator;
+            const u = ((p3[0] - p1[0]) * d1y - (p3[1] - p1[1]) * d1x) / denominator;
+
+            // 严格检查交点是否在线段内部（排除端点）
+            const isTInside = t > epsilon && t < 1 - epsilon;
+            const isUInside = u > epsilon && u < 1 - epsilon;
+
+            if (isTInside && isUInside) {
+                // 计算交点坐标
+                const intersectionX = p1[0] + t * d1x;
+                const intersectionY = p1[1] + t * d1y;
+
+                return {
+                    intersects: true,
+                    intersectionPoint: [intersectionX, intersectionY],
+                    t: t,
+                    u: u
+                };
+            }
+
+            return { intersects: false };
+        }
+
+        //工具函数-----------------
+
+
+        //设置数据Bbox(line)
+        async function setSourceBounds(url, layerName) {
+            const response = await fetch(url)
+            const xmlText = await response.text()
+            const parser = new DOMParser()
+            const xmlDoc = parser.parseFromString(xmlText, 'text/xml')
+            // 解析所有图层
+            let layerInfo
+            const layerElements = xmlDoc.getElementsByTagName('Layer')
+            for (let layerElem of layerElements) {
+                const name = layerElem.getElementsByTagName('Name')[0]?.textContent
+
+                if (name == layerName) {
+                    // 解析边界框
+                    const bbox = layerElem.getElementsByTagName('BoundingBox')[0]
+                    const boundingBox = bbox
+                        ? {
+                            crs: bbox.getAttribute('CRS'),
+                            minx: parseFloat(bbox.getAttribute('minx')),
+                            miny: parseFloat(bbox.getAttribute('miny')),
+                            maxx: parseFloat(bbox.getAttribute('maxx')),
+                            maxy: parseFloat(bbox.getAttribute('maxy'))
+                        }
+                        : null
+
+                    layerInfo = { layer_name: name, layer_boundingBox: boundingBox }
+                }
+            }
+            const minX = layerInfo.layer_boundingBox.minx
+            const minY = layerInfo.layer_boundingBox.miny
+            const maxX = layerInfo.layer_boundingBox.maxx
+            const maxY = layerInfo.layer_boundingBox.maxy
+            const points = []
+            points.push(new T.LngLat(minX, maxY))
+            points.push(new T.LngLat(maxX, maxY))
+            points.push(new T.LngLat(maxX, minY))
+            points.push(new T.LngLat(minX, minY))
+            points.push(new T.LngLat(minX, maxY))
+            var line = new T.Polyline(points, {
+                color: '#049ef4',
+                weight: 1.0,
+                opacity: 0.7,
+                lineStyle: 'dashed'
+            })
+            map.addOverLay(line)
+        }
+
+        //创建全局scene和camera
+        function createScene(domID, camera) {
+            const ambientLight = new THREE.AmbientLight(0x404040)
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+            directionalLight.position.set(1, 1, 1)
+
+            const loader = new THREE.TextureLoader()
+            const texture = loader.load('/Public/imgs/three/bg1.jpeg', () => {
+                texture.mapping = THREE.EquirectangularReflectionMapping
+                texture.colorSpace = THREE.SRGBColorSpace
+                scene.background = texture
+            })
+
+            const scene = new THREE.Scene()
+            scene.background = new THREE.Color(0x1a1a2e)
+            const container = domID
+            const renderer = new THREE.WebGLRenderer({
+                antialias: true,
+            })
+            renderer.setSize(container[0].clientWidth, container[0].clientHeight)
+            container[0].appendChild(renderer.domElement)
+            scene.add(ambientLight)
+            scene.add(directionalLight)
+            const control = new THREE.OrbitControls(camera, renderer.domElement)
+            control.enablePan = true
+            control.panSpeed = 1.0 // 调整平移速度
+            control.keyPanSpeed = 20.0
+
+            return [scene, control, renderer]
+        }
+
+        //recTool.draw->bbox
+        function getBbox() {
+            return new Promise((resolve, reject) => {
+                const handler = e => {
+                    const bbox = e.currentBounds
+                    recTool.removeEventListener('draw', handler)
+                    resolve(bbox)
+                }
+                recTool.addEventListener('draw', handler)
+            })
+        }
+
+        //本地dem地址--边界扩展
+        async function setDEMUrl(layerName, bbox) {
+            const resolution = 0.00027777778
+            const minX = bbox.getSouthWest().lng
+            const minY = bbox.getSouthWest().lat
+            const maxX = bbox.getNorthEast().lng
+            const maxY = bbox.getNorthEast().lat
+
+            let wcsURL =
+                'http://8.155.1.150:8080/geoserver/wcs' +
+                '?service=WCS' +
+                '&version=2.0.1' +
+                '&request=GetCoverage' +
+                '&coverageId=' +
+                layerName +
+                '&format=image/tiff' +
+                '&subset=Long(' +
+                minX +
+                ',' +
+                maxX +
+                ')' +
+                '&subset=Lat(' +
+                minY +
+                ',' +
+                maxY +
+                ')'
+
+            let wcsURL2 =
+                'http://8.155.1.150:8080/geoserver/wcs' +
+                '?service=WCS' +
+                '&version=2.0.1' +
+                '&request=GetCoverage' +
+                '&coverageId=' +
+                layerName +
+                '&format=image/tiff' +
+                '&subset=Long(' +
+                minX +
+                ',' +
+                maxX +
+                ')' +
+                '&subset=Lat(' +
+                minY +
+                ',' +
+                maxY +
+                ')'
+
+
+            const demData = await fetch(wcsURL)
+            const arrayBuffer = await demData.arrayBuffer()
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer)
+            const image = await tiff.getImage()
+            const dem_range = image.getBoundingBox()
+
+            let [dem_minX, dem_minY, dem_maxX, dem_maxY] = dem_range
+            //如果minX小于dem_minX,划取的边界点在DEM的范围外，则将dem_minX向左偏移一个像元宽度以包裹住minX
+            if (minX < dem_minX) {
+                dem_minX = dem_minX - resolution
+            }
+            if (minY < dem_minY) {
+                dem_minY = dem_minY - resolution
+            }
+            //如果maxX大于dem_maxX,划取的边界点在DEM的范围外，则将dem_maxX向右偏移一个像元宽度以包裹住maxX
+            if (maxX > dem_maxX) {
+                dem_maxX = dem_maxX + resolution
+            }
+            if (maxY > dem_maxY) {
+                dem_maxY = dem_maxY + resolution
+            }
+
+            wcsURL =
+                'http://8.155.1.150:8080/geoserver/wcs' +
+                '?service=WCS' +
+                '&version=2.0.1' +
+                '&request=GetCoverage' +
+                '&coverageId=' +
+                layerName +
+                '&format=image/tiff' +
+                '&subset=Long(' +
+                dem_minX +
+                ',' +
+                dem_maxX +
+                ')' +
+                '&subset=Lat(' +
+                dem_minY +
+                ',' +
+                dem_maxY +
+                ')'
+
+            return [wcsURL, [dem_minX, dem_minY, dem_maxX, dem_maxY]]
+        }
+
+        //生成mesh_dem
+        async function c_mesh_dem(demData, camera, m_meshname) {
+            //GeoTIFF.js库读取信息
+            const tiff = await GeoTIFF.fromArrayBuffer(demData)
+            const image = await tiff.getImage()
+            const rasters = await image.readRasters()
+            //dem的x、y方向的像元数(tile数量)
+            const width = image.getWidth()
+            const height = image.getHeight()
+            //DEM像素深度(32位)
+            const elevationData = new Float32Array(rasters[0])
+            //保持长宽比，plane的width按比例拉伸
+            const geometry = new THREE.PlaneGeometry(5, 5 * height / width, width - 1, height - 1)
+            //最大高程值
+            let maxElevation = -Infinity
+            for (let i = 0; i < elevationData.length; i++) {
+                if (elevationData[i] > maxElevation) {
+                    maxElevation = elevationData[i]
+                }
+            }
+            //最小高程值
+            let minElevation = Infinity
+            for (let i = 0; i < elevationData.length; i++) {
+                const num = elevationData[i]
+                if (num !== 0 && num < minElevation) {
+                    minElevation = num
+                }
+            }
+            //生成的plane的顶点信息
+            const positions = geometry.attributes.position.array
+            for (let i = 0; i < elevationData.length; i++) {
+                //dem只有一个高程值时
+                if (maxElevation == minElevation) {
+                    positions[i * 3 + 2] = 0
+                }
+                //*****每一组顶点数据的最后一个是z值，将其设置为归一后的高程值
+                else {
+                    //生成mesh的时候用右手坐标系，所以x,y都已经有值了，只能用z值来代表高度
+                    positions[i * 3 + 2] = (elevationData[i] - minElevation) / (maxElevation - minElevation) // 设置Z坐标
+                }
+            }
+
+            geometry.attributes.position.needsUpdate = true
+            geometry.computeVertexNormals()
+
+            var mesh_dem = new THREE.Mesh(geometry)
+            mesh_dem.name = m_meshname
+            //mesh是右手坐标系，z值朝屏幕外，所以绕x轴向上旋转
+            mesh_dem.rotation.x = -Math.PI / 2
+            camera.position.set(0, 5, 3.5)
+            return [mesh_dem, minElevation, maxElevation, geometry]
+        }
+
+        //多层(img + cia)Tile_裁切_可选level
+        async function c_dom_img_cia_lv(bbox, lv) {
+            const zoom = lv
+            const tileSize = 256
+
+            var minX = bbox.getSouthWest().lng
+            var minY = bbox.getSouthWest().lat
+            var maxX = bbox.getNorthEast().lng
+            var maxY = bbox.getNorthEast().lat
+
+            const nw = lngLatToTile(minX, maxY, zoom) // 西北角
+            const ne = lngLatToTile(maxX, maxY, zoom) // 东北角
+            const sw = lngLatToTile(minX, minY, zoom) // 西南角
+            const se = lngLatToTile(maxX, minY, zoom)
+
+            const minCol = Math.min(nw[0], sw[0])
+            const maxCol = Math.max(ne[0], se[0])
+            const minRow = Math.min(ne[1], se[1]) // 注意：行号从上到下增加
+            const maxRow = Math.max(nw[1], sw[1])
+
+            const tiles = []
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({
+                        url: getTileWMTSUrlIMG(col, row, zoom),
+                        col: col,
+                        row: row
+                    })
+                }
+            }
+
+            const tiles2 = []
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles2.push({
+                        url: getTileWMTSUrlCIA(col, row, zoom),
+                        col: col,
+                        row: row
+                    })
+                }
+            }
+
+            const bounds = calculateBounds(tiles)
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize
+
+            //离屏canvas1
+            const canvas1 = document.createElement('canvas')
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true })
+            canvas1.width = canvasWidth
+            canvas1.height = canvasHeight
+            ctx1.fillStyle = 'transparent'
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight)
+
+            //计算第一个瓦片左上角坐标
+            const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom)
+            //计算最后一个瓦片右下角坐标,+1保证为右下角(否则为最后一个瓦片的左上角坐标)
+            const [lastTile_se_x, lastTile_se_y] = tileToLngLat(
+                maxCol + 1,
+                maxRow + 1,
+                zoom
+            )
+            //计算范围宽高
+            const geo_width = lastTile_se_x - firstTile_nw_x
+            const geo_height = lastTile_se_y - firstTile_nw_y
+            //计算像素比例
+            const pixelsPerDegreeX = canvasWidth / geo_width
+            const pixelsPerDegreeY = canvasHeight / geo_height
+            //计算选择框像素尺寸
+            const selectionPixelWidth = (maxX - minX) * pixelsPerDegreeX
+            const selectionPixelHeight = (minY - maxY) * pixelsPerDegreeY
+
+            //离屏canvas2
+            const canvas2 = document.createElement('canvas')
+            canvas2.width = Math.ceil(selectionPixelWidth)
+            canvas2.height = Math.ceil(selectionPixelHeight)
+            const ctx2 = canvas2.getContext('2d')
+
+            // 计算偏移量
+            const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX
+            const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY
+
+            return new Promise(async (resolve, reject) => {
+                try {
+                    // 绘制所有img瓦片到canvas1
+                    const images = await getAllImages(tiles)
+                    images.forEach((img, index) => {
+                        const tile = tiles[index]
+                        const x = (tile.col - bounds.minCol) * tileSize
+                        const y = (tile.row - bounds.minRow) * tileSize
+                        ctx1.drawImage(img, x, y, tileSize, tileSize)
+                    })
+                    // 绘制所有cia瓦片到canvas1
+                    const cias = await getAllImages(tiles2)
+                    cias.forEach((cia, index) => {
+                        const tile = tiles2[index]
+                        const x = (tile.col - bounds.minCol) * tileSize
+                        const y = (tile.row - bounds.minRow) * tileSize
+                        ctx1.drawImage(cia, x, y, tileSize, tileSize)
+                    })
+
+                    // 从canvas1裁剪到canvas2
+                    const imageData = ctx1.getImageData(
+                        Math.floor(offset_x),
+                        Math.floor(offset_y),
+                        canvas2.width,
+                        canvas2.height
+                    )
+                    ctx2.putImageData(imageData, 0, 0)
+
+                    resolve(canvas2)
+                } catch (error) {
+                    reject(error)
+                }
+            })
+        }
+
+        //new Image().onLoad-批量
+        async function getAllImages(tiles) {
+            const loadPromises = tiles.map(tile =>
+                loadImage(tile.url).catch(error => {
+                    console.error(`加载瓦片失败: ${tile.url}`, error)
+                    return null
+                })
+            )
+            const images = await Promise.all(loadPromises)
+
+            return images
+        }
+
+        //new Image().onload-获取地址的数据----fetch(url)
+        function loadImage(url, timeout = 5000000) {
+            return new Promise((resolve, reject) => {
+                const img = new Image()
+                img.crossOrigin = 'anonymous'
+
+                const timer = setTimeout(() => {
+                    reject(new Error(`图片加载超时: ${url}`))
+                }, timeout)
+
+                img.onload = () => {
+                    clearTimeout(timer)
+                    resolve(img)
+                }
+
+                img.onerror = error => {
+                    clearTimeout(timer)
+                    reject(error)
+                }
+
+                img.src = url
+            })
+        }
+
+        //重置group
+        function deleteGroup(scene, groupName) {
+            const group = scene.getObjectByName(groupName);
+            if (group) {
+                scene.remove(group)
+            }
+        }
+
+        //resise,drag three窗口
+        function init3DViewDragResize(domID) {
+            interact('#' + domID)
+                .resizable({
+                    edges: { left: true, right: true, bottom: true, top: false },
+                    ignoreFrom: '.three_container',
+                    modifiers: [
+                        interact.modifiers.restrictEdges({
+                            outer: 'parent'
+                        }),
+                        interact.modifiers.restrictSize({
+                            min: { width: 10, height: 10 }
+                        })
+                    ],
+                    inertia: true,
+                    listeners: {
+                        move: function (event) {
+                            // 更新 DOM 尺寸
+                            const target = event.target
+                            target.style.width = event.rect.width + 'px'
+                            target.style.height = event.rect.height + 'px'
+                            // 同步更新 Scene
+                            updateSceneSize(event.rect.width - 10, event.rect.height - 40)
+                        }
+                    }
+                })
+                .draggable({
+                    allowFrom: '.v_header',
+                    inertia: true,
+                    modifiers: [
+                        interact.modifiers.restrictRect({
+                            restriction: 'parent',
+                            endOnly: true
+                        })
+                    ],
+                    listeners: {
+                        move: function (event) {
+                            const target = event.target
+                            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx
+                            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy
+
+                            target.style.transform = `translate(${x}px, ${y}px)`
+                            target.setAttribute('data-x', x)
+                            target.setAttribute('data-y', y)
+                        }
+                    }
+                })
+        }
+
+        //根据dom动态调整scene
+        function updateSceneSize(width, height) {
+            renderer1.setSize(width, height)
+            camera1.aspect = width / height
+            camera1.updateProjectionMatrix()
+            renderer1.render(scene1, camera1)
+            $('#threeCon1').css('width', width)
+            $('#threeCon1').css('height', height)
+        }
+
+        //根据拉框大小计算字体大小
+        function calFontSizeByGeoBBox(bbox) {
+            const minX = bbox.getSouthWest().lng
+            const minY = bbox.getSouthWest().lat
+            const maxX = bbox.getNorthEast().lng
+            const maxY = bbox.getNorthEast().lat
+            const width = maxX - minX
+            const height = maxY - minY
+            const geoSize = Math.max(width, height)
+
+            let fontSize
+            if (geoSize < 0.001) {
+                // 很小范围（约100米内）
+                fontSize = 24
+            } else if (geoSize < 0.01) {
+                // 小范围（约1公里内）
+                fontSize = 12
+            } else if (geoSize < 0.1) {
+                // 中等范围（约10公里内）
+                fontSize = 6
+            } else if (geoSize < 1) {
+                // 大范围（约100公里内）
+                fontSize = 6
+            } else {
+                // 超大范围（100公里以上）
+                fontSize = 6
+            }
+            fontSize = Math.max(4, Math.min(36, fontSize))
+
+            return fontSize
+        }
+
+        //计算范围框内的河流
+        async function cal_riv_intersects(rivList, bboxGeo) {
+            const riv_ins = []
+            const NE = bboxGeo.getNorthEast()
+            const SW = bboxGeo.getSouthWest()
+            const minX = SW.lng
+            const minY = SW.lat
+            const maxX = NE.lng
+            const maxY = NE.lat
+
+            rivList.forEach(river => {
+                //用bboxGeo与riverBouds作交叉检查，初步筛选河流
+                if (bboxGeo.intersects(river[0].getBounds())) {
+                    const riv_coords = river[0].getLngLats()
+                    const point_in_bbox_list = []
+                    //遍历初筛后的河流点，若有点在bbox内(bboxGeo.contains),记录每个点的index
+                    const p_index = []
+                    for (let i = 0; i < riv_coords.length; i++) {
+                        //点在bbox内
+                        if (bboxGeo.contains(riv_coords[i])) {
+                            //*****点不在bbox的边线上(否则边界上的点会重复)
+                            if (
+                                riv_coords[i].lng != minX &&
+                                riv_coords[i].lng != maxX &&
+                                riv_coords[i].lat != minY &&
+                                riv_coords[i].lat != maxY
+                            ) {
+                                point_in_bbox_list.push(riv_coords[i])
+                                p_index.push(i)
+                            }
+                        }
+                    }
+
+                    //index列表长度>0时，河流有点在bbox内
+                    if (p_index.length > 0) {
+                        //先判断是否反复穿插
+                        let isSingleLine = true
+                        for (let i = 0; i < p_index.length - 1; i++) {
+                            if (p_index[i] + 1 != p_index[i + 1]) {
+                                isSingleLine = false
+                            }
+                        }
+                        //反复穿插
+                        if (!isSingleLine) {
+                            //1.起、终点都在bbox内
+                            if (p_index[0] == 0 && p_index.at(-1) == riv_coords.length - 1) {
+                                // console.log(river[1], 'c1')
+                                //1.1.计算入或出时，在bounds内的最近的点的index
+                                let near_bounds_point_index = []
+                                for (let i = 0; i < p_index.length - 1; i++) {
+                                    if (p_index[i + 1] - p_index[i] != 1) {
+                                        near_bounds_point_index.push(p_index[i])
+                                        near_bounds_point_index.push(p_index[i + 1])
+                                    }
+                                }
+                                //1.2.生成最临近边界处的交叉线
+                                const cross_line_list = []
+                                for (let i = 0; i < near_bounds_point_index.length; i++) {
+                                    if (i % 2 == 0) {
+                                        const seg1_sp = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        const seg1_ep = [
+                                            riv_coords[near_bounds_point_index[i] + 1].lng,
+                                            riv_coords[near_bounds_point_index[i] + 1].lat
+                                        ]
+                                        cross_line_list.push([seg1_sp, seg1_ep])
+                                    } else {
+                                        const seg2_sp = [
+                                            riv_coords[near_bounds_point_index[i] - 1].lng,
+                                            riv_coords[near_bounds_point_index[i] - 1].lat
+                                        ]
+                                        const seg2_ep = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        cross_line_list.push([seg2_sp, seg2_ep])
+                                    }
+                                }
+                                //生成交叉线后再构造完整的index列表，否则1.2会多生成cross_line
+                                near_bounds_point_index.unshift(0) //加入起点index
+                                near_bounds_point_index.push(riv_coords.length - 1) //加入终点index
+                                //1.3.计算边界四边与交叉线的交点
+                                const cross_point_list = []
+                                const ins_bounds_lines = c_bbox_line(bboxGeo)
+                                for (let i = 0; i < cross_line_list.length; i++) {
+                                    ins_bounds_lines.forEach(l => {
+                                        const ins_point1 = linesIntersectWithPoint(
+                                            cross_line_list[i],
+                                            l
+                                        )
+                                        if (ins_point1.intersects) {
+                                            cross_point_list.push(ins_point1.intersectionPoint)
+                                            //图上标示交点
+                                            // var circle = new T.Circle(
+                                            //     new T.LngLat(
+                                            //         ins_point1.intersectionPoint[0],
+                                            //         ins_point1.intersectionPoint[1]
+                                            //     ), 5);
+
+                                            // map.addOverLay(circle)
+                                            // geo_marker_list.push(circle)
+                                        }
+                                    })
+                                }
+                                //1.4.将point_in_bbox_list切分
+                                for (let i = 0; i < near_bounds_point_index.length / 2; i++) {
+                                    //near_bounds_point_index[i*2+1] + 1：第一个+1为index，第二个为slice包裹后面那个点
+                                    const slice = riv_coords.slice(
+                                        near_bounds_point_index[i * 2],
+                                        near_bounds_point_index[i * 2 + 1] + 1
+                                    )
+                                    //第一段
+                                    if (i == 0) {
+                                        slice.push(
+                                            new T.LngLat(cross_point_list[i][0], cross_point_list[i][1])
+                                        )
+                                    }
+                                    //最后一段
+                                    else if (i == near_bounds_point_index.length / 2 - 1) {
+                                        slice.unshift(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2 - 1][0],
+                                                cross_point_list[i * 2 - 1][1]
+                                            )
+                                        )
+                                    }
+                                    //中间段
+                                    else {
+                                        slice.unshift(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2 - 1][0],
+                                                cross_point_list[i * 2 - 1][1]
+                                            )
+                                        )
+                                        slice.push(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2][0],
+                                                cross_point_list[i * 2][1]
+                                            )
+                                        )
+                                    }
+                                    riv_ins.push([slice, river[1]])
+                                    var line = new T.Polyline(slice, {
+                                        color: 'blue',
+                                        weight: 3,
+                                        opacity: 0.8,
+                                        lineStyle: 'dashed'
+                                    })
+                                    map.addOverLay(line)
+                                    geo_marker_list.push(line)
+                                }
+                            }
+                            //2.只有终点在bbox内
+                            else if (p_index[0] != 0 && p_index.at(-1) == riv_coords.length - 1) {
+                                // console.log(river[1], 'c2')
+                                //2.1.计算入或出时，在bounds内的最近的点的index
+                                let near_bounds_point_index = []
+                                near_bounds_point_index.push(p_index[0])
+                                for (let i = 0; i < p_index.length - 1; i++) {
+                                    if (p_index[i + 1] - p_index[i] != 1) {
+                                        near_bounds_point_index.push(p_index[i])
+                                        near_bounds_point_index.push(p_index[i + 1])
+                                    }
+                                }
+                                //2.2.生成最临近边界处的交叉线
+                                const cross_line_list = []
+                                for (let i = 0; i < near_bounds_point_index.length; i++) {
+                                    if (i % 2 == 0) {
+                                        const seg1_sp = [
+                                            riv_coords[near_bounds_point_index[i] - 1].lng,
+                                            riv_coords[near_bounds_point_index[i] - 1].lat
+                                        ]
+                                        const seg1_ep = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        cross_line_list.push([seg1_sp, seg1_ep])
+                                    } else {
+                                        const seg2_sp = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        const seg2_ep = [
+                                            riv_coords[near_bounds_point_index[i] + 1].lng,
+                                            riv_coords[near_bounds_point_index[i] + 1].lat
+                                        ]
+                                        cross_line_list.push([seg2_sp, seg2_ep])
+                                    }
+                                }
+                                //生成交叉线后再构造完整的index列表，否则2.2会多生成cross_line
+                                near_bounds_point_index.push(riv_coords.length - 1) //加入终点index
+                                //2.3.计算边界四边与交叉线的交点
+                                const cross_point_list = []
+                                const ins_bounds_lines = c_bbox_line(bboxGeo)
+                                for (let i = 0; i < cross_line_list.length; i++) {
+                                    ins_bounds_lines.forEach(l => {
+                                        const ins_point1 = linesIntersectWithPoint(
+                                            cross_line_list[i],
+                                            l
+                                        )
+                                        if (ins_point1.intersects) {
+                                            cross_point_list.push(ins_point1.intersectionPoint)
+                                        }
+                                    })
+                                }
+                                //2.4.将point_in_bbox_list切分
+                                for (let i = 0; i < near_bounds_point_index.length / 2; i++) {
+                                    //near_bounds_point_index[i*2+1] + 1：第一个+1为index，第二个为slice包裹后面那个点
+                                    const slice = riv_coords.slice(
+                                        near_bounds_point_index[i * 2],
+                                        near_bounds_point_index[i * 2 + 1] + 1
+                                    )
+                                    //最后一段
+                                    if (i == near_bounds_point_index.length / 2 - 1) {
+                                        slice.unshift(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2][0],
+                                                cross_point_list[i * 2][1]
+                                            )
+                                        )
+                                    } else {
+                                        slice.unshift(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2][0],
+                                                cross_point_list[i * 2][1]
+                                            )
+                                        )
+                                        slice.push(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2 + 1][0],
+                                                cross_point_list[i * 2 + 1][1]
+                                            )
+                                        )
+                                    }
+
+                                    riv_ins.push([slice, river[1]])
+                                    var line = new T.Polyline(slice, {
+                                        color: 'blue',
+                                        weight: 3,
+                                        opacity: 0.8,
+                                        lineStyle: 'dashed'
+                                    })
+                                    map.addOverLay(line)
+                                    geo_marker_list.push(line)
+                                }
+                            }
+                            //3.只有起点在bbox内
+                            else if (p_index[0] == 0 && p_index.at(-1) != riv_coords.length - 1) {
+                                // console.log(river[1], 'c3')
+                                //3.1.计算入或出时，在bounds内的最近的点的index
+                                let near_bounds_point_index = []
+                                for (let i = 0; i < p_index.length - 1; i++) {
+                                    if (p_index[i + 1] - p_index[i] != 1) {
+                                        near_bounds_point_index.push(p_index[i])
+                                        near_bounds_point_index.push(p_index[i + 1])
+                                    }
+                                }
+                                near_bounds_point_index.push(p_index.at(-1))
+                                //3.2.生成最临近边界处的交叉线
+                                const cross_line_list = []
+                                for (let i = 0; i < near_bounds_point_index.length; i++) {
+                                    if (i % 2 == 0) {
+                                        const seg1_sp = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        const seg1_ep = [
+                                            riv_coords[near_bounds_point_index[i] + 1].lng,
+                                            riv_coords[near_bounds_point_index[i] + 1].lat
+                                        ]
+                                        cross_line_list.push([seg1_sp, seg1_ep])
+                                    } else {
+                                        const seg2_sp = [
+                                            riv_coords[near_bounds_point_index[i] - 1].lng,
+                                            riv_coords[near_bounds_point_index[i] - 1].lat
+                                        ]
+                                        const seg2_ep = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        cross_line_list.push([seg2_sp, seg2_ep])
+                                    }
+                                }
+                                //生成交叉线后再构造完整的index列表，否则3.2会多生成cross_line
+                                near_bounds_point_index.unshift(p_index[0]) //加入终点index
+                                //3.3.计算边界四边与交叉线的交点
+                                const cross_point_list = []
+                                const ins_bounds_lines = c_bbox_line(bboxGeo)
+                                for (let i = 0; i < cross_line_list.length; i++) {
+                                    ins_bounds_lines.forEach(l => {
+                                        const ins_point1 = linesIntersectWithPoint(
+                                            cross_line_list[i],
+                                            l
+                                        )
+                                        if (ins_point1.intersects) {
+                                            cross_point_list.push(ins_point1.intersectionPoint)
+                                        }
+                                    })
+                                }
+                                //3.4.将point_in_bbox_list切分
+                                for (let i = 0; i < near_bounds_point_index.length / 2; i++) {
+                                    //near_bounds_point_index[i*2+1] + 1：第一个+1为index，第二个为slice包裹后面那个点
+                                    const slice = riv_coords.slice(
+                                        near_bounds_point_index[i * 2],
+                                        near_bounds_point_index[i * 2 + 1] + 1
+                                    )
+                                    //第一段
+                                    if (i == 0) {
+                                        slice.push(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2][0],
+                                                cross_point_list[i * 2][1]
+                                            )
+                                        )
+                                    } else {
+                                        slice.unshift(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2 - 1][0],
+                                                cross_point_list[i * 2 - 1][1]
+                                            )
+                                        )
+                                        slice.push(
+                                            new T.LngLat(
+                                                cross_point_list[i * 2][0],
+                                                cross_point_list[i * 2][1]
+                                            )
+                                        )
+                                    }
+
+                                    riv_ins.push([slice, river[1]])
+                                    var line = new T.Polyline(slice, {
+                                        color: 'blue',
+                                        weight: 3,
+                                        opacity: 0.8,
+                                        lineStyle: 'dashed'
+                                    })
+                                    map.addOverLay(line)
+                                    geo_marker_list.push(line)
+                                }
+                            }
+                            //4.起、终点都不在bbox内
+                            else {
+                                // console.log(river[1], 'c4')
+                                //4.1.计算入或出时，在bounds内的最近的点的index
+                                let near_bounds_point_index = []
+                                near_bounds_point_index.push(p_index[0])
+                                for (let i = 0; i < p_index.length - 1; i++) {
+                                    if (p_index[i + 1] - p_index[i] != 1) {
+                                        near_bounds_point_index.push(p_index[i])
+                                        near_bounds_point_index.push(p_index[i + 1])
+                                    }
+                                }
+                                near_bounds_point_index.push(p_index.at(-1))
+                                //4.2.生成最临近边界处的交叉线
+                                const cross_line_list = []
+                                for (let i = 0; i < near_bounds_point_index.length; i++) {
+                                    if (i % 2 == 0) {
+                                        const seg1_sp = [
+                                            riv_coords[near_bounds_point_index[i] - 1].lng,
+                                            riv_coords[near_bounds_point_index[i] - 1].lat
+                                        ]
+                                        const seg1_ep = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        cross_line_list.push([seg1_sp, seg1_ep])
+                                    } else {
+                                        const seg2_sp = [
+                                            riv_coords[near_bounds_point_index[i]].lng,
+                                            riv_coords[near_bounds_point_index[i]].lat
+                                        ]
+                                        const seg2_ep = [
+                                            riv_coords[near_bounds_point_index[i] + 1].lng,
+                                            riv_coords[near_bounds_point_index[i] + 1].lat
+                                        ]
+                                        cross_line_list.push([seg2_sp, seg2_ep])
+                                    }
+                                }
+                                //4.3.计算边界四边与交叉线的交点
+                                const cross_point_list = []
+                                const ins_bounds_lines = c_bbox_line(bboxGeo)
+                                for (let i = 0; i < cross_line_list.length; i++) {
+                                    ins_bounds_lines.forEach(l => {
+                                        const ins_point1 = linesIntersectWithPoint(
+                                            cross_line_list[i],
+                                            l
+                                        )
+                                        if (ins_point1.intersects) {
+                                            cross_point_list.push(ins_point1.intersectionPoint)
+                                        }
+                                    })
+                                }
+                                //4.4.将point_in_bbox_list切分
+                                for (let i = 0; i < near_bounds_point_index.length / 2; i++) {
+                                    //near_bounds_point_index[i*2+1] + 1：第一个+1为index，第二个为slice包裹后面那个点
+                                    const slice = riv_coords.slice(
+                                        near_bounds_point_index[i * 2],
+                                        near_bounds_point_index[i * 2 + 1] + 1
+                                    )
+                                    slice.unshift(
+                                        new T.LngLat(
+                                            cross_point_list[i * 2][0],
+                                            cross_point_list[i * 2][1]
+                                        )
+                                    )
+                                    slice.push(
+                                        new T.LngLat(
+                                            cross_point_list[i * 2 + 1][0],
+                                            cross_point_list[i * 2 + 1][1]
+                                        )
+                                    )
+                                    riv_ins.push([slice, river[1]])
+                                    var line = new T.Polyline(slice, {
+                                        color: 'blue',
+                                        weight: 3,
+                                        opacity: 0.8,
+                                        lineStyle: 'dashed'
+                                    })
+                                    map.addOverLay(line)
+                                    geo_marker_list.push(line)
+                                }
+                            }
+                        } else {
+                            //5.起、终点都在bbox内
+                            if (p_index.length == riv_coords.length) {
+                                // console.log(river[1], 'c5')
+                                riv_ins.push([point_in_bbox_list, river[1]])
+                            } //6.只有终点在bbox内
+                            else if (p_index[0] != 0 && p_index.at(-1) == riv_coords.length - 1) {
+                                // console.log(river[1], 'c6')
+                                const ins_riv_line1 = [
+                                    [riv_coords[p_index[0] - 1].lng, riv_coords[p_index[0] - 1].lat],
+                                    [riv_coords[p_index[0]].lng, riv_coords[p_index[0]].lat]
+                                ]
+                                //bbox的4条边生成4条线，遍历与构造的线求交点
+                                const ins_bounds_lines = c_bbox_line(bboxGeo)
+                                ins_bounds_lines.forEach(l => {
+                                    //第一点和再前一个点组成的第一条线与边界线做交叉求交点
+                                    const ins_point1 = linesIntersectWithPoint(ins_riv_line1, l)
+                                    if (ins_point1.intersects) {
+                                        const p_lnglat = new T.LngLat(
+                                            ins_point1.intersectionPoint[0],
+                                            ins_point1.intersectionPoint[1]
+                                        )
+                                        //插入列表第一个点之前
+                                        point_in_bbox_list.unshift(p_lnglat)
+                                    }
+                                })
+                                riv_ins.push([point_in_bbox_list, river[1]])
+                            } //7.只有起点在bbox内
+                            else if (p_index[0] == 0 && p_index.at(-1) != riv_coords.length - 1) {
+                                // console.log(river[1], 'c7')
+                                const ins_riv_line1 = [
+                                    [riv_coords[p_index.at(-1)].lng, riv_coords[p_index.at(-1)].lat],
+                                    [
+                                        riv_coords[p_index.at(-1) + 1].lng,
+                                        riv_coords[p_index.at(-1) + 1].lat
+                                    ]
+                                ]
+                                //bbox的4条边生成4条线，遍历与构造的线求交点
+                                const ins_bounds_lines = c_bbox_line(bboxGeo)
+                                ins_bounds_lines.forEach(l => {
+                                    //最后一个点与其后一个点组成的线与边界线做交叉求交点
+                                    const ins_point1 = linesIntersectWithPoint(ins_riv_line1, l)
+                                    if (ins_point1.intersects) {
+                                        const p_lnglat = new T.LngLat(
+                                            ins_point1.intersectionPoint[0],
+                                            ins_point1.intersectionPoint[1]
+                                        )
+                                        //插入列表末尾
+                                        point_in_bbox_list.push(p_lnglat)
+                                    }
+                                })
+                                riv_ins.push([point_in_bbox_list, river[1]])
+                            } //8.起、终点都不在bbox内
+                            else {
+                                // console.log(river[1], 'c8')
+                                const ins_riv_line1 = [
+                                    [riv_coords[p_index[0] - 1].lng, riv_coords[p_index[0] - 1].lat],
+                                    [riv_coords[p_index[0]].lng, riv_coords[p_index[0]].lat]
+                                ]
+                                const ins_riv_line2 = [
+                                    [riv_coords[p_index.at(-1)].lng, riv_coords[p_index.at(-1)].lat],
+                                    [
+                                        riv_coords[p_index.at(-1) + 1].lng,
+                                        riv_coords[p_index.at(-1) + 1].lat
+                                    ]
+                                ]
+                                //bbox的4条边生成4条线，遍历与构造的线求交点
+                                const ins_bounds_lines = c_bbox_line(bboxGeo)
+                                ins_bounds_lines.forEach(l => {
+                                    //第一点和再前一个点组成的第一条线与边界线做交叉求交点
+                                    const ins_point1 = linesIntersectWithPoint(ins_riv_line1, l)
+                                    if (ins_point1.intersects) {
+                                        const p_lnglat = new T.LngLat(
+                                            ins_point1.intersectionPoint[0],
+                                            ins_point1.intersectionPoint[1]
+                                        )
+                                        //插入列表第一个点之前
+                                        point_in_bbox_list.unshift(p_lnglat)
+                                    }
+                                    //最后一个点与其后一个点组成的线与边界线做交叉求交点
+                                    const ins_point2 = linesIntersectWithPoint(ins_riv_line2, l)
+                                    if (ins_point2.intersects) {
+                                        const p_lnglat = new T.LngLat(
+                                            ins_point2.intersectionPoint[0],
+                                            ins_point2.intersectionPoint[1]
+                                        )
+                                        //插入列表末尾
+                                        point_in_bbox_list.push(p_lnglat)
+                                    }
+                                })
+                                riv_ins.push([point_in_bbox_list, river[1]])
+                            }
+
+                        }
+                    } else {
+                        //9. 起、终点都不在bbox内，且没有折点在bbox内(直线段很长)
+                        // console.log(river[1], 'c9')
+                        const cross_point_list = []
+                        const ins_bounds_lines = c_bbox_line(bboxGeo)
+                        for (let i = 0; i < riv_coords.length - 1; i++) {
+                            const single_line = [[riv_coords[i].lng, riv_coords[i].lat], [riv_coords[i + 1].lng, riv_coords[i + 1].lat]]
+                            ins_bounds_lines.forEach(l => {
+                                const ins_point1 = linesIntersectWithPoint(
+                                    single_line,
+                                    l
+                                )
+                                if (ins_point1.intersects) {
+                                    const cross_point_lnglat = new T.LngLat(ins_point1.intersectionPoint[0], ins_point1.intersectionPoint[1])
+                                    //与最近的起点的距离
+                                    const dis = riv_coords[i].distanceTo(cross_point_lnglat)
+                                    cross_point_list.push([ins_point1.intersectionPoint, dis])
+                                }
+                            })
+                        }
+                        //根据距离排序
+                        cross_point_list.sort((a, b) => a[1] - b[1]);
+                        if (cross_point_list.length > 0) {
+                            const slice = [new T.LngLat(cross_point_list[0][0][0], cross_point_list[0][0][1]), new T.LngLat(cross_point_list[1][0][0], cross_point_list[1][0][1])]
+                            riv_ins.push([slice, river[1]])
+                            // console.log(cross_point_list)
+                        }
+                        // c
+
+
+
+                    }
+                }
+            })
+            riv_ins.forEach(riv => {
+                var line = new T.Polyline(riv[0], {
+                    color: 'blue',
+                    weight: 3,
+                    opacity: 0.8,
+                    lineStyle: 'dashed'
+                })
+                map.addOverLay(line)
+                geo_marker_list.push(line)
+            })
+
+            return riv_ins
+        }
+
+        //生成河流线_动态
+        async function c_polyline_riv_animate(scene, meshDem, box3, riverInsList, bboxGeo, material) {
+            const raycaster = new THREE.Raycaster()
+
+            deleteGroup(scene, 'river_group')
+            const riverGroup = new THREE.Group()
+            riverGroup.name = 'river_group'
+
+            const geo_bounds_min_x = bboxGeo.getSouthWest().getLng()
+            const geo_bounds_min_y = bboxGeo.getSouthWest().getLat()
+            const geo_bounds_max_x = bboxGeo.getNorthEast().getLng()
+            const geo_bounds_max_y = bboxGeo.getNorthEast().getLat()
+            const geo_width = geo_bounds_max_x - geo_bounds_min_x
+            const geo_height = geo_bounds_max_y - geo_bounds_min_y
+            const dem_width = box3.max.x - box3.min.x
+            const dem_height = box3.max.z - box3.min.z
+
+            //标志点大小
+            const mesh_col = meshDem.geometry.parameters.widthSegments
+            const mesh_row = meshDem.geometry.parameters.heightSegments
+            const spere_radius = 50 / Math.min(mesh_col / geo_width, mesh_row / geo_height)
+
+            //将riv_point转为three坐标
+            for (let i = 0; i < riverInsList.length; i++) {
+                const riv_point_three = []
+                for (let j = 0; j < riverInsList[i][0].length; j++) {
+                    const geoPoint = [riverInsList[i][0][j].lng, riverInsList[i][0][j].lat]
+                    //平面
+                    const three_pos_x = ((geoPoint[0] - geo_bounds_min_x) * dem_width) / geo_width //将选择框缩放至dem大小，p点位置距dem左上角x距离等比缩放
+                    const three_pos_z = ((geoPoint[1] - geo_bounds_min_y) * dem_height) / geo_height //将选择框缩放至dem大小，p点位置距dem左上角y距离等比缩放
+                    let three_pos_x_trans = three_pos_x - dem_width / 2 //左上坐标系平移至中间点坐标系
+                    let three_pos_z_trans = dem_height / 2 - three_pos_z //左上坐标系平移至中间点坐标系
+
+                    //*****先判断点是否刚好在边界上,若在,需要偏移极小量,否则不能相交
+                    if (Math.abs(three_pos_x_trans - box3.min.x) < 0.00000001) {
+                        three_pos_x_trans += 0.00000001;
+                    } else if (Math.abs(three_pos_x_trans - box3.max.x) < 0.00000001) {
+                        three_pos_x_trans -= 0.00000001;
+                    } else if (Math.abs(three_pos_z_trans - box3.min.z) < 0.00000001) {
+                        three_pos_z_trans += 0.00000001;
+                    } else if (Math.abs(three_pos_z_trans - box3.max.z) < 0.00000001) {
+                        three_pos_z_trans -= 0.00000001;
+                    }
+
+                    //计算geo点映射到mesh坐标中与mesh的交点(计算交点和平面)
+                    const startY = meshDem.geometry.boundingBox.max.y + 10
+                    const direction = new THREE.Vector3(0, -1, 0)
+                    const rayOrigin = new THREE.Vector3(
+                        three_pos_x_trans,
+                        startY,
+                        three_pos_z_trans
+                    )
+                    raycaster.set(rayOrigin, direction)
+                    const intersects = raycaster.intersectObjects([meshDem])
+                    if (intersects.length > 0) {
+                        const point = intersects[0].point
+                        riv_point_three.push([[three_pos_x_trans, three_pos_z_trans], point])
+                    } else {
+                        //有没有交叉到的点
+                        console.log(box3, riverInsList[i][0].length, j, three_pos_x_trans, three_pos_z_trans)
+                    }
+
+                }
+
+                //将转为three坐标的riv_point构成lien与seg交叉判断交点
+                const wireframeGeometry = new THREE.WireframeGeometry(meshDem.geometry)
+                meshDem.localToWorld(wireframeGeometry)
+                //用所有线段来和riv_point_three的每两点构成的line做交叉，求出交点，插入riv_point_three中对应位置，最后riv_point_three按顺序构成river_line
+                const positionAttribute = wireframeGeometry.getAttribute('position')
+                let river_point_list = []
+                //遍历所有折点，每两个组成一段line，与网格线相交
+                for (let j = 0; j < riv_point_three.length - 1; j++) {
+                    //空表第1个点为固定的riv_point_three第1个点
+                    river_point_list.push([riv_point_three[j][1]])
+
+                    //计算交点
+                    const riv_sp = riv_point_three[j][0]
+                    const riv_ep = riv_point_three[j + 1][0]
+                    const riv_line = [riv_sp, riv_ep]
+                    const seg_point_list = []
+                    for (let k = 0; k < positionAttribute.count - 1; k += 2) {
+                        const start = new THREE.Vector3()
+                        const end = new THREE.Vector3()
+                        //获取vector的位置属性(geometry坐标)
+                        start.fromBufferAttribute(positionAttribute, k)
+                        end.fromBufferAttribute(positionAttribute, k + 1)
+                        //*****运用坐标变换(mesh坐标)
+                        meshDem.localToWorld(start)
+                        meshDem.localToWorld(end)
+                        const seg_sp = [start.x, start.y]
+                        const seg_ep = [end.x, end.y]
+                        const seg_line = [seg_sp, seg_ep]
+                        //求出平面交点(mesh坐标)
+                        const ins_point1 = lineSegmentsIntersect(seg_line, riv_line)
+
+                        if (ins_point1.intersects) {
+                            const startY = meshDem.geometry.boundingBox.max.y + 10
+                            const direction = new THREE.Vector3(0, -1, 0)
+                            const rayOrigin = new THREE.Vector3(
+                                ins_point1.intersectionPoint[0],
+                                startY,
+                                ins_point1.intersectionPoint[1]
+                            )
+                            raycaster.set(rayOrigin, direction)
+                            const intersects = raycaster.intersectObjects([meshDem])
+                            if (intersects.length > 0) {
+                                //求出3维交点
+                                const point = intersects[0].point
+                                //交点到第j段line起点的距离
+                                const dis = point.distanceTo(riv_point_three[j][1]);
+                                seg_point_list.push([point, dis])
+                            }
+                        }
+                    }
+                    //两点构成的line与格网的交点，必须在line上，可以用距离判断其顺序
+                    seg_point_list.sort((a, b) => a[1] - b[1]);
+                    for (let k = 0; k < seg_point_list.length; k++) {
+                        //排序后，按顺序插入
+                        river_point_list.push(seg_point_list[k])
+                    }
+
+                }
+                //river_point_list最后一个点，固定插入riv_point_three的最后一个点
+                river_point_list.push([riv_point_three.at(-1)[1], 10000])
+
+                const river_point_list_sorted = river_point_list.map(item => item[0])
+                const riv_three_geo = new THREE.BufferGeometry().setFromPoints(river_point_list_sorted)
+                setupLineProgress(riv_three_geo, river_point_list_sorted);
+                const line = new THREE.Line(riv_three_geo, material)
+                riverGroup.add(line)
+
+                const fontSize = calFontSizeByGeoBBox(bboxGeo)
+                const riv_label = await cal_mid_p_riv_label(riverInsList[i][1], river_point_list_sorted, spere_radius, fontSize)
+                riverGroup.add(riv_label)
+
+                scene.add(riverGroup)
+            }
+            return riverGroup
+        }
+
+        //根据河流所有点的总长度，分别计算每个点进度值，用于更新shader中的textureCoord
+        function setupLineProgress(geometry, points) {
+            let totalLength = 0;
+            const segmentLengths = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                const length = points[i].distanceTo(points[i + 1]);
+                segmentLengths.push(length);
+                totalLength += length;
+            }
+            // 设置每个顶点的进度值
+            const lineProgress = new Float32Array(points.length);
+            lineProgress[0] = 0; // 起点
+            let accumulatedLength = 0;
+            for (let i = 1; i < points.length; i++) {
+                accumulatedLength += segmentLengths[i - 1];
+                lineProgress[i] = accumulatedLength / totalLength;
+            }
+
+            geometry.setAttribute('lineProgress', new THREE.BufferAttribute(lineProgress, 1));
+            return totalLength;
+        }
+
+        //计算河流的里程中点，用于注记河流名称
+        async function cal_mid_p_riv_label(rivName, rivPointList, sphereRadius, fontSize) {
+            let riv_three_len = 0.0
+            for (let i = 0; i < rivPointList.length - 1; i++) {
+                const seg_len = rivPointList[i].distanceTo(rivPointList[i + 1])
+                riv_three_len += seg_len
+            }
+            //点的m值
+            let p_m = 0.0
+            for (let i = 1; i < rivPointList.length; i++) {
+                const seg_len = rivPointList[i].distanceTo(rivPointList[i - 1])
+                p_m += seg_len
+                if (p_m > riv_three_len / 2) {
+                    const river_icon = '/Public/imgs/river.png'
+                    const riv_label = await createTextSpriteWithIcon(rivName, rivPointList[i], sphereRadius, '#366ee5', fontSize, river_icon)
+                    return riv_label
+                }
+            }
+        }
+
+        //带icon的文字注记sprite
+        function createTextSpriteWithIcon(text, point, spere_radius, text_color, fontSize, iconUrl) {
+            const scale = fontSize <= 8 ? 8 : 4
+            // 创建高分辨率Canvas
+            const canvas = document.createElement('canvas')
+            const context = canvas.getContext('2d', { willReadFrequently: true })
+            const baseWidth = 256
+            const baseHeight = 256
+            canvas.width = baseWidth * scale
+            canvas.height = baseHeight * scale
+            context.scale(scale, scale)
+
+            return new Promise((resolve) => {
+                // 加载图标
+                const icon = new Image()
+                icon.onload = function () {
+                    // 设置字体
+                    const fontFamily = 'Arial, sans-serif'
+                    context.font = `bold ${fontSize}px ${fontFamily}`
+                    context.textAlign = 'left' // 改为左对齐
+                    context.textBaseline = 'middle'
+
+                    // 测量文字
+                    const metrics = context.measureText(text)
+                    const textWidth = metrics.width
+                    const textHeight = fontSize
+
+                    // 图标尺寸（根据字体大小调整）
+                    const iconSize = fontSize * 1.2
+                    const spacing = fontSize * 0.3 // 图标和文字间距
+
+                    // 计算总宽度
+                    const totalWidth = iconSize + spacing + textWidth
+
+                    // 计算背景参数
+                    const paddingH = Math.max(2, fontSize * 0.4)
+                    const paddingV = Math.max(1, fontSize * 0.3)
+                    const bgWidth = totalWidth + paddingH * 2
+                    const bgHeight = Math.max(iconSize, textHeight) + paddingV * 2
+
+                    const centerX = baseWidth / 2
+                    const centerY = baseHeight / 2
+                    const bgX = centerX - bgWidth / 2
+                    const bgY = centerY - bgHeight / 2
+
+                    // 像素对齐
+                    const alignedBgX = Math.floor(bgX) + 0.5
+                    const alignedBgY = Math.floor(bgY) + 0.5
+                    const alignedBgWidth = Math.floor(bgWidth)
+                    const alignedBgHeight = Math.floor(bgHeight)
+
+                    // 绘制背景
+                    context.fillStyle = '#ffffff'
+                    context.fillRect(
+                        alignedBgX,
+                        alignedBgY,
+                        alignedBgWidth,
+                        alignedBgHeight
+                    )
+
+                    // 计算图标位置（左侧）
+                    const iconX = centerX - totalWidth / 2
+                    const iconY = centerY - iconSize / 2
+
+                    // 绘制图标
+                    context.drawImage(
+                        icon,
+                        iconX,
+                        iconY,
+                        iconSize,
+                        iconSize
+                    )
+
+                    // 计算文字位置（图标右侧）
+                    const textX = iconX + iconSize + spacing
+                    const alignedTextX = Math.floor(textX) + 0.5
+                    const alignedTextY = Math.floor(centerY) + 0.5
+
+                    // 绘制文字
+                    context.fillStyle = text_color
+                    context.fillText(text, alignedTextX, alignedTextY)
+
+                    // 创建纹理和精灵
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const material = new THREE.SpriteMaterial({
+                        map: texture,
+                        transparent: true
+                    });
+                    const sprite = new THREE.Sprite(material);
+                    sprite.position.copy(point);
+                    sprite.position.y += spere_radius * 4;
+
+                    resolve(sprite);
+                }
+
+                icon.onerror = function () {
+                    console.error('图标加载失败:', iconUrl)
+                    // 如果图标加载失败，回退到只显示文字
+                    resolve(createTextWithoutIcon(text, point, spere_radius, text_color, fontSize))
+                }
+
+                icon.src = iconUrl
+            })
+        }
+
+        //注册Three中元素的隐藏与显示开关(默认为开)
+        function regSHThreeFeature(showFlag, domID, groupName) {
+            $('#' + domID).off('click')
+            $('#' + domID).on('click', HD1)
+
+            let bt = $('#' + domID).find('button')[0]
+            let circle = $('#' + domID).find('.switch_circle')[0]
+            if (showFlag[domID] == false) {
+                bt.classList.toggle('switch_active')
+                circle.classList.toggle('circle_right')
+                showFlag[domID] = true
+            }
+
+            const group = scene1.getObjectByName(groupName);
+            function HD1() {
+                bt.classList.toggle('switch_active')
+                circle.classList.toggle('circle_right')
+                if (showFlag[domID] == true) {
+                    if (group) {
+                        group.traverse(s => {
+                            s.visible = false
+                        })
+                    }
+                    showFlag[domID] = false
+                } else {
+                    if (group) {
+                        group.traverse(s => {
+                            s.visible = true
+                        })
+                    }
+                    showFlag[domID] = true
+                }
+            }
+        }
+
+        // 从 three_shaders.js 提取的常量（本页面用到）
+        const testLineVS2 = `
+            attribute float lineProgress;
+            varying float vProgress;
+            varying vec2 vUv;
+            
+            void main() {
+                vProgress = lineProgress;
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const testLineFS2 = `
+            uniform sampler2D colorTexture;
+            varying float vProgress;
+            varying vec2 vUv;
+            uniform float time;
+            
+            void main() {
+                vec2 animatedTexCoord = vec2(fract(vProgress - time), vUv.y);
+                vec4 textureColor = texture2D(colorTexture, animatedTexCoord);
+                gl_FragColor = textureColor;
+            }
+        `;
+
+        // 从 geoTools.js 提取的函数（本页面用到）
+        // 计算两条线段的交点
+        function calculateIntersection(line1, line2) {
+            const [p1, p2] = line1;
+            const [p3, p4] = line2;
+
+            const x1 = p1[0], y1 = p1[1];
+            const x2 = p2[0], y2 = p2[1];
+            const x3 = p3[0], y3 = p3[1];
+            const x4 = p4[0], y4 = p4[1];
+
+            const denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+
+            if (denominator === 0) {
+                return null;
+            }
+
+            const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator;
+            const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denominator;
+
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                const x = x1 + t * (x2 - x1);
+                const y = y1 + t * (y2 - y1);
+                return [x, y];
+            }
+
+            return null;
+        }
+
+        // 判断两条线段是否相交并返回交点
+        function linesIntersectWithPoint(line1, line2) {
+            const intersection = calculateIntersection(line1, line2);
+            return {
+                intersects: intersection !== null,
+                intersectionPoint: intersection
+            };
+        }
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        var map = new T.Map('map');
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(102.809, 30.118), 15);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        let showFlag = {};
+        showFlag.sh_riv_polyline = true;
+
+        //tdt中:点击点、bbox内的河流line,
+        let geo_marker_list = []
+        //tdt中：tile网格线
+        let demOverLayerList = []
+
+        let dem_mesh_material_img = new THREE.MeshBasicMaterial()
+
+        //加载ya河流
+        let river_list = []
+        $.get('http://8.155.1.150:8080/getLocalGEO/getYARiver').then(res => {
+            res.forEach(riv => {
+                const coord_json = JSON.parse(riv.geometry).coordinates
+                const riv_name = riv.name
+                var points = []
+                coord_json.forEach(p => {
+                    points.push(new T.LngLat(p[0], p[1]))
+                })
+                var line = new T.Polyline(points, {
+                    color: 'red',
+                    weight: 0.8,
+                    opacity: 0.8,
+                    lineStyle: "dash",
+                });
+                map.addOverLay(line);
+                river_list.push([line, riv_name])
+            })
+        })
+
+        //设置dem范围
+        setSourceBounds('http://8.155.1.150:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        $('#getDem').on('click', HD1)
+        async function HD1() {
+
+
+            //不能使用map.clearOverLays()--因为map中的空间要素(河流等)不要被清除
+            clearOverLays()
+
+            //interact组件设置窗口拉伸缩放
+            init3DViewDragResize('Window_3D')
+
+            //避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+            //拉框工具
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            let bbox_geo = await getBbox()
+            //选择框过大时，退出
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            } else if (x_range <= 0.0003 || y_range <= 0.0003) {
+                layer.alert('框选范围过小！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+            //数据加载进度框
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]),//左下
+                new T.LngLat(bounds[2], bounds[3]) //右上
+            )
+            //构造扩大范围矩形
+            const geo_rectangle = []
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng()
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat()
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng()
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat()
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny))
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            })
+            map.addOverLay(rect)
+            demOverLayerList.push(rect)
+            recTool.clear()
+            //dem数据
+            const demData = await fetch(DEMUrl)
+            const demDataClone = demData.clone()
+            //demData.clone()只能读取一次，使用demDataClone.arrayBuffer()可以多次读取
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+
+            //------------------------------------二维--------------------------------------
+            //1.生成geo_bbox内的河流点集
+            const river_ins_list = await cal_riv_intersects(river_list, bbox_geo_expand)
+
+            //------------------------------------三维--------------------------------------
+            //清除scene中已有three对象,清除mesh内存
+            const old_dem_mesh = scene1.getObjectByName('mesh_dem')
+            if (old_dem_mesh) {
+                old_dem_mesh.geometry.dispose();
+                old_dem_mesh.material.dispose();
+                dem_mesh_material_img.dispose()
+            }
+            scene1.children.length = 0;
+            //dem生成mesh
+            const [mesh_dem, minEle, maxEle, geometry] = await c_mesh_dem(demDataArrayBuffer, camera1, 'mesh_dem')
+            scene1.add(mesh_dem)
+            //计算dem的bbox
+            const box3 = new THREE.Box3().setFromObject(mesh_dem);
+            //河流
+            const textureLoader = new THREE.TextureLoader();
+            const colorTexture = textureLoader.load('/Public/imgs/spriteLine2.png');
+            const river_line_material = new THREE.ShaderMaterial({
+                uniforms: {
+                    // 定义一个颜色uniform
+                    colorTexture: { value: colorTexture },
+                    time: { value: 0 }
+                },
+                vertexShader: testLineVS2,
+                fragmentShader: testLineFS2,
+            });
+            const riv_group = await c_polyline_riv_animate(scene1, mesh_dem, box3, river_ins_list, bbox_geo_expand, river_line_material)
+
+            //纹理1
+            const img_cia_tiles = await c_dom_img_cia_lv(bbox_geo_expand, 18)
+            textureLoader.load(img_cia_tiles.toDataURL('image/png'), function (res) {
+                dem_mesh_material_img.map = res
+                dem_mesh_material_img.side = THREE.DoubleSide
+                dem_mesh_material_img.needsUpdate = true
+            })
+            mesh_dem.material = dem_mesh_material_img
+
+            //避免出现白模，initThreeView异步最后让其显示
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+                $('#' + 'Window_3D').css('visibility', 'visible')
+                $('.sh_ctr_group').show()
+                resolve();
+            })
+
+            //显示河流功能
+            regSHThreeFeature(showFlag, 'sh_riv_polyline', 'river_group');
+            function animate() {
+                requestAnimationFrame(animate);
+                river_line_material.uniforms.time.value += 0.001;
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+
+            //每次拉框后重置各个按钮状态
+            $('.sw_container').css('visibility', 'visible');
+        }
+
+        $('#clo_con1').on('click', function () {
+            clearOverLays()
+
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 6.5);
+        })
+
+      
+    </script>
+</body>
+
+</html>

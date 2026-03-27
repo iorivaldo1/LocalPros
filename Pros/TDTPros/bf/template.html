@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #mapDiv {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapDiv">
+    </div>
+
+    <script>
+        var map = new T.Map("mapDiv")
+        var zoom = 12;
+        map.centerAndZoom(new T.LngLat(103, 30), zoom);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        )
+        map.addControl(ctrl)
+
+        //启动时默认的layer
+        const mapLayer = Object.values(ctrl.hW)[2].layer
+        map.setMapType(mapLayer)
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,560 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/exif.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+
+    <script src="./s3.js"></script>
+    <script src="./p3fn.js"></script>
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .v_header {
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #test {
+            position: absolute;
+            bottom: 100px;
+            left: 70px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+
+        #clo_con1 {
+            right: 10px;
+        }
+
+        #reloadScene1 {
+            right: 40px;
+        }
+
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-select" id="map"></div>
+    <button class="no-select" id="getDem">T</button>
+    <!-- <button id="test">T2</button> -->
+
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+        <div class="sh_ctr_group">
+        </div>
+
+    </div>
+
+    <script>
+        let demOverLayerList = []
+        let dem_mesh_material_img = new THREE.MeshBasicMaterial()
+        const PLANE_SIZE = 5.0;
+        const HEIGHT_SCALE = 1.0;    // 高度缩放
+
+        // 物理参数 - 平衡质量感与流动性
+        const params = {
+            gravity: 9.0,       // 较大重力保持质量感
+            pipeArea: 0.35,      // 适中管道面积，保持流动性
+            pipeLength: 0.8,     // 适中管道长度
+            dt: 0.005,           // 适中时间步长
+            injectAmount: 1.3,
+            injectRadius: 0.005,
+            evaporation: 0.0000001  // 每一小步蒸发的比例
+        };
+
+        //resise,drag three窗口
+        function init3DViewDragResize(domID) {
+            interact('#' + domID)
+                .resizable({
+                    edges: { left: true, right: true, bottom: true, top: false },
+                    ignoreFrom: '.three_container',
+                    modifiers: [
+                        interact.modifiers.restrictEdges({
+                            outer: 'parent'
+                        }),
+                        interact.modifiers.restrictSize({
+                            min: { width: 10, height: 10 }
+                        })
+                    ],
+                    inertia: true,
+                    listeners: {
+                        move: function (event) {
+                            // 更新 DOM 尺寸
+                            const target = event.target
+                            target.style.width = event.rect.width + 'px'
+                            target.style.height = event.rect.height + 'px'
+                            // 同步更新 Scene
+                            updateSceneSize(event.rect.width - 10, event.rect.height - 40)
+                        }
+                    }
+                })
+                .draggable({
+                    allowFrom: '.v_header',
+                    inertia: true,
+                    modifiers: [
+                        interact.modifiers.restrictRect({
+                            restriction: 'parent',
+                            endOnly: true
+                        })
+                    ],
+                    listeners: {
+                        move: function (event) {
+                            const target = event.target
+                            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx
+                            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy
+
+                            target.style.transform = `translate(${x}px, ${y}px)`
+                            target.setAttribute('data-x', x)
+                            target.setAttribute('data-y', y)
+                        }
+                    }
+                })
+        }
+
+        //根据dom动态调整scene
+        function updateSceneSize(width, height) {
+            renderer.setSize(width, height)
+            camera.aspect = width / height
+            camera.updateProjectionMatrix()
+            renderer.render(scene, camera)
+            $('#threeCon1').css('width', width)
+            $('#threeCon1').css('height', height)
+        }
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        var map = new T.Map('map');
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(102.691, 30.34), 15);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera.position.set(1, 10, 3);
+
+        const [scene, control, renderer] = createScene($('#threeCon1'), camera);
+        $('#getDem').on('click', HD1)
+
+        function animate() {
+            requestAnimationFrame(animate);
+            control.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        async function HD1() {
+            clearOverLays()
+
+            //interact组件设置窗口拉伸缩放
+            init3DViewDragResize('Window_3D')
+
+            //避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+
+            const bbox_geo_raw = map.getBounds()
+
+            //视图范围过大时，退出
+            const x_range = bbox_geo_raw.getNorthEast().lng - bbox_geo_raw.getSouthWest().lng
+            const y_range = bbox_geo_raw.getNorthEast().lat - bbox_geo_raw.getSouthWest().lat
+            // if (x_range >= 0.08 || y_range >= 0.08) {
+            //     layer.alert('视图范围过大！请缩小地图后重试');
+            //     return;
+            // } else if (x_range <= 0.0003 || y_range <= 0.0003) {
+            //     layer.alert('视图范围过小！请放大地图后重试');
+            //     return;
+            // }
+            //将bbox修正为正方形（取长边，以中心点为基准）
+            const center_lng = (bbox_geo_raw.getSouthWest().lng + bbox_geo_raw.getNorthEast().lng) / 2
+            const center_lat = (bbox_geo_raw.getSouthWest().lat + bbox_geo_raw.getNorthEast().lat) / 2
+            const half_side = 0.8 * Math.min(x_range, y_range) / 2
+            const bbox_geo = new T.LngLatBounds(
+                new T.LngLat(center_lng - half_side, center_lat - half_side),
+                new T.LngLat(center_lng + half_side, center_lat + half_side)
+            )
+            //数据加载进度框
+            // var loadIndex = layer.msg('数据加载中', {
+            //     icon: 16,
+            //     shade: 0.01,
+            //     time: false
+            // });
+
+            //获取着色器与材质工厂
+            const {
+                createFluxShader,
+                createWaterShader,
+                createWaterRenderMaterial,
+                createGPGPUMaterial,
+                createPollutionShader,
+                createTerrainShader
+            } = window.FluidShaders;
+
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]),//左下
+                new T.LngLat(bounds[2], bounds[3]) //右上
+            )
+
+            //构造扩大范围矩形
+            const geo_rectangle = []
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng()
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat()
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng()
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat()
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny))
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            })
+            map.addOverLay(rect)
+            demOverLayerList.push(rect)
+            //dem数据
+            const demData = await fetch(DEMUrl)
+            const demDataClone = demData.clone()
+            //demData.clone()只能读取一次，使用demDataClone.arrayBuffer()可以多次读取
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+            //GeoTIFF.js库读取信息
+            const tiff = await GeoTIFF.fromArrayBuffer(demDataArrayBuffer)
+            const image = await tiff.getImage()
+            const rasters = await image.readRasters()
+            //dem的x、y方向的像元数(tile数量)
+            const colCounts = image.getWidth()
+            const rowCounts = image.getHeight()
+            //DEM像素深度(32位)
+            const elevationData = new Float32Array(rasters[0])
+
+            // 计算高度范围（基于 elevationData Float32Array）
+            let minElevation = Infinity, maxElevation = -Infinity;
+            for (let i = 0; i < elevationData.length; i++) {
+                const val = elevationData[i];
+                if (val !== 0) {
+                    minElevation = Math.min(minElevation, val);
+                    maxElevation = Math.max(maxElevation, val);
+                }
+            }
+
+            // 创建归一化高度数据
+            const heightData = new Float32Array(colCounts * rowCounts);
+            for (let i = 0; i < elevationData.length; i++) {
+                heightData[i] = (elevationData[i] - minElevation) / (maxElevation - minElevation);
+            }
+
+            // 创建高度纹理 (原始分辨率) - 使用 RGBA 提高兼容性
+            const heightDataRGBA = new Float32Array(colCounts * rowCounts * 4);
+            for (let i = 0; i < heightData.length; i++) {
+                heightDataRGBA[i * 4] = heightData[i];
+            }
+            const heightTexture = new THREE.DataTexture(heightDataRGBA, colCounts, rowCounts, THREE.RGBAFormat, THREE.FloatType);
+            heightTexture.needsUpdate = true;
+            heightTexture.minFilter = THREE.LinearFilter;
+            heightTexture.magFilter = THREE.LinearFilter;
+
+            //清除scene中已有three对象
+            const oldTerrain = scene.getObjectByName('terrainMesh');
+            if (oldTerrain) {
+                oldTerrain.geometry.dispose();
+                oldTerrain.material.dispose();
+            }
+            scene.children.length = 0;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 5);
+            scene.add(dirLight);
+
+            const planeAspect = rowCounts / colCounts;
+            const terrainGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE * planeAspect, colCounts - 1, rowCounts - 1);
+            //影像数据
+            const img_cia_tiles = await c_dom_img_cia_lv(bbox_geo_expand, 18)
+            const domTexture = new THREE.CanvasTexture(img_cia_tiles)
+
+            // 创建地形材质，使用 DOM 贴图显示影像
+            const terrainMat = createTerrainShader();
+            terrainMat.uniforms.uDomTex.value = domTexture;
+            terrainMat.uniforms.uHasTerrainTex.value = 1.0;
+
+            const posAttr = terrainGeo.attributes.position.array;
+            for (let i = 0; i < heightData.length; i++) {
+                posAttr[i * 3 + 2] = heightData[i] * HEIGHT_SCALE;
+            }
+            terrainGeo.attributes.position.needsUpdate = true;
+            terrainGeo.computeVertexNormals();
+
+            const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+            terrainMesh.name = 'terrainMesh';
+            terrainMesh.rotation.x = -Math.PI / 2;
+            scene.add(terrainMesh);
+
+            //GPGPU ---------------------
+
+
+            // 创建模拟用的高度纹理 (全分辨率)
+            const simHeightData = new Float32Array(colCounts * rowCounts * 4);
+            simHeightData.set(heightDataRGBA);
+            const simHeightTexture = new THREE.DataTexture(simHeightData, colCounts, rowCounts, THREE.RGBAFormat, THREE.FloatType);
+            simHeightTexture.needsUpdate = true;
+            simHeightTexture.minFilter = THREE.NearestFilter;
+            simHeightTexture.magFilter = THREE.NearestFilter;
+
+            // 创建 GPGPU 渲染目标 (Ping-Pong 双缓冲)
+            function createRenderTarget(useLinear = false) {
+                return new THREE.WebGLRenderTarget(colCounts, rowCounts, {
+                    minFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                    magFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                    format: THREE.RGBAFormat,
+                    type: THREE.FloatType,
+                    depthBuffer: false,
+                    stencilBuffer: false
+                });
+            }
+
+            // 水深场双缓冲 - 使用线性过滤以获得平滑边缘
+            let rtWater = [createRenderTarget(true), createRenderTarget(true)];
+            // 通量场双缓冲 - 保持最近邻过滤以确保模拟精度
+            let rtFlux = [createRenderTarget(false), createRenderTarget(false)];
+            // 污染标记双缓冲 - 使用线性过滤以获得平滑边缘
+            let rtPollution = [createRenderTarget(true), createRenderTarget(true)];
+
+            let currentBuffer = 0;
+
+            // 初始化水深和通量为0
+            const initData = new Float32Array(colCounts * rowCounts * 4);
+            const initTexture = new THREE.DataTexture(initData, colCounts, rowCounts, THREE.RGBAFormat, THREE.FloatType);
+            initTexture.needsUpdate = true;
+
+            // 初始化污染纹理为0
+            const clearColor = new THREE.Color(0, 0, 0);
+            renderer.setClearColor(clearColor, 0);
+            renderer.setRenderTarget(rtPollution[0]);
+            renderer.clear();
+            renderer.setRenderTarget(rtPollution[1]);
+            renderer.clear();
+            renderer.setRenderTarget(null);
+
+            // GPGPU 场景和相机
+            const gpgpuScene = new THREE.Scene();
+            const gpgpuCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            const gpgpuQuad = new THREE.PlaneGeometry(2, 2);
+
+            // 通量计算材质
+            const fluxShader = createFluxShader();
+            const fluxUniforms = {
+                uWaterTex: { value: null },
+                uHeightTex: { value: simHeightTexture },
+                uFluxTex: { value: null },
+                uResolution: { value: new THREE.Vector2(colCounts, rowCounts) },
+                uDt: { value: params.dt },
+                uGravity: { value: params.gravity },
+                uPipeArea: { value: params.pipeArea },
+                uPipeLength: { value: params.pipeLength }
+            };
+            const fluxMaterial = createGPGPUMaterial(fluxShader, fluxUniforms);
+            const fluxMesh = new THREE.Mesh(gpgpuQuad, fluxMaterial);
+
+            // 水深更新材质
+            const waterShader = createWaterShader();
+            const waterUniforms = {
+                uWaterTex: { value: null },
+                uFluxTex: { value: null },
+                uHeightTex: { value: simHeightTexture },
+                uResolution: { value: new THREE.Vector2(colCounts, rowCounts) },
+                uDt: { value: params.dt },
+                uPipeLength: { value: params.pipeLength },
+                uInjectActive: { value: false },
+                uInjectPos: { value: new THREE.Vector2(-1, -1) },
+                uInjectRadius: { value: Math.max(params.injectRadius, 3.0 / Math.min(colCounts, rowCounts)) },
+                uInjectAmount: { value: params.injectAmount },
+                uEvaporation: { value: 1.0 - params.evaporation },
+                uSlopeDir: { value: new THREE.Vector2(0, 0) }
+            };
+            const waterMaterial = createGPGPUMaterial(waterShader, waterUniforms);
+            const waterMesh = new THREE.Mesh(gpgpuQuad.clone(), waterMaterial);
+
+            // 污染标记材质
+            const pollutionShader = createPollutionShader();
+            const pollutionUniforms = {
+                uPollutionTex: { value: null },
+                uWaterTex: { value: null },
+                uPollutionRate: { value: 0.3 },  // 大幅增加污染扩散速率
+                uDecayRate: { value: 0.00001 }   // 降低衰减速率，让污染更持久
+            };
+            const pollutionMaterial = createGPGPUMaterial(pollutionShader, pollutionUniforms);
+            const pollutionMesh = new THREE.Mesh(gpgpuQuad.clone(), pollutionMaterial);
+
+            //水面渲染网格
+            //--------------*水面网格使用更高分辨率以获得平滑边缘
+            const waterGeo = new THREE.PlaneGeometry(
+                PLANE_SIZE,
+                PLANE_SIZE * planeAspect,
+                colCounts - 1,
+                rowCounts - 1
+            );
+            const waterRenderMat = createWaterRenderMaterial();
+            waterRenderMat.uniforms.uHeightTex.value = heightTexture;
+            waterRenderMat.uniforms.uHeightScale.value = HEIGHT_SCALE;
+            waterRenderMat.uniforms.uMaxDepth.value = 0.05; // 再次大幅调低，让薄水层看起来更明显（更实）
+            waterRenderMat.uniforms.uResolution.value.set(colCounts, rowCounts);
+
+            // --- Lighting Update ---
+            waterRenderMat.uniforms.uTerrainSize.value = PLANE_SIZE;
+            waterRenderMat.uniforms.uLightDir.value.copy(dirLight.position).normalize();
+            waterRenderMat.uniforms.uSpecularColor.value.setHex(0xffffff);
+            waterRenderMat.uniforms.uShininess.value = 100.0;
+
+            const waterSurface = new THREE.Mesh(waterGeo, waterRenderMat);
+            waterSurface.rotation.x = -Math.PI / 2;
+            waterSurface.position.y = 0.001; // 稍微偏移防止 z-fighting
+            scene.add(waterSurface);
+
+            //射线检测和点击交互
+
+            setupInteractionContext(
+                renderer, camera, terrainMesh,
+                waterUniforms, simHeightData, colCounts, rowCounts,
+                rtWater, rtFlux, rtPollution
+            );
+
+            //动画循环
+            let lastTime = performance.now();
+            let frameCount = 0;
+            let fps = 0;
+
+            function animate() {
+                requestAnimationFrame(animate);
+
+                // 执行多次模拟步进以提高稳定性（增加子步数配合较小的时间步长）
+                const subSteps = 5;
+                for (let i = 0; i < subSteps; i++) {
+                    currentBuffer = simulationStep(
+                        renderer,
+                        gpgpuScene, gpgpuCamera,
+                        fluxMesh, waterMesh, pollutionMesh,
+                        fluxUniforms, waterUniforms, pollutionUniforms,
+                        rtWater, rtFlux, rtPollution,
+                        currentBuffer,
+                        waterRenderMat, terrainMat
+                    );
+                }
+
+                control.update();
+
+                // 重置渲染目标并渲染主场景
+                renderer.setRenderTarget(null);
+                renderer.render(scene, camera);
+            }
+
+            animate();
+
+
+            $('#Window_3D').css('visibility', 'visible')
+            $('.sh_ctr_group').show()
+        }
+
+        $('#clo_con1').on('click', function () {
+            clearOverLays()
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera.position.set(1, 20, 3);
+        })
+
+        // window.addEventListener('resize', () => {
+        //     camera.aspect = window.innerWidth / window.innerHeight;
+        //     camera.updateProjectionMatrix();
+        //     renderer.setSize(window.innerWidth, window.innerHeight);
+        // });
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/f3d.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .v_header {
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+
+        #clo_con1 {
+            right: 10px;
+        }
+
+        #reloadScene1 {
+            right: 40px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+    </div>
+
+
+    <script>
+        interact('#Window_3D')
+            .resizable({
+                edges: { left: true, right: true, bottom: true, top: false },
+                ignoreFrom: '.three_container',
+                modifiers: [
+                    interact.modifiers.restrictEdges({
+                        outer: 'parent'
+                    }),
+                    interact.modifiers.restrictSize({
+                        min: { width: 10, height: 10 }
+                    })
+                ],
+                inertia: true,
+                listeners: {
+                    move: function (event) {
+                        // 更新 DOM 尺寸
+                        const target = event.target;
+                        target.style.width = event.rect.width + 'px';
+                        target.style.height = event.rect.height + 'px';
+                        // 同步更新 Scene
+                        updateSceneSize(event.rect.width - 10, event.rect.height - 40);
+                    }
+                }
+            })
+            .draggable({
+                allowFrom: '.v_header',
+                inertia: true,
+                modifiers: [
+                    interact.modifiers.restrictRect({
+                        restriction: 'parent',
+                        endOnly: true
+                    })
+                ],
+                listeners: {
+                    move: function (event) {
+                        const target = event.target;
+                        const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                        const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+
+                        target.style.transform = `translate(${x}px, ${y}px)`;
+                        target.setAttribute('data-x', x);
+                        target.setAttribute('data-y', y);
+                    }
+                }
+            });
+
+        function updateSceneSize(width, height) {
+            renderer1.setSize(width, height);
+            camera1.aspect = width / height;
+            camera1.updateProjectionMatrix();
+            renderer1.render(scene1, camera1);
+            $('#threeCon1').css('width', width);
+            $('#threeCon1').css('height', height);
+        }
+
+        var maxElevation = -Infinity;
+        var minElevation = -Infinity;
+
+        var bridgeNameList = []
+        var labelBridgeList = []
+        let geo_bbox = null;
+        var bridgeList = []
+        let geo_marker_list = []
+        let dem_marker_list = []
+        var qlIconUrl = "/Public/imgs/bridge.png";
+
+        var icon = new T.Icon({
+            iconUrl: qlIconUrl, //请求图标图片的URL
+            iconSize: new T.Point(15, 15), //图标可视区域的大小。
+            iconAnchor: new T.Point(7.5, 7.5), //图标的定位锚点
+        });
+        $.get('http://localhost:8080/localGEO/getYABridge').then(res => {
+            res.forEach(b => {
+                const b_jd = parseFloat(b.geometry.split(' ')[0].split('(')[1]).toFixed(5)
+                const b_wd = parseFloat(b.geometry.split(' ')[1].replace(')', '')).toFixed(5)
+                bridgeList.push([b_jd, b_wd, b.bridgeName])
+                var bridge_pos_tdt = new T.LngLat(b_jd, b_wd);
+                var marker = new T.Marker(bridge_pos_tdt, {
+                    icon: icon,
+                });
+                map.addOverLay(marker);
+            })
+        })
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')//DEM范围框
+
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        $('#getDem').on('click', HD1)
+
+        async function HD1() {
+            //清除点击点
+            clearMarkers(map,geo_marker_list,scene1,dem_marker_list)
+
+            //避免出现白模，initThreeView异步最后让其显示
+            $('#Window_3D').css('visibility', 'hidden')
+
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            const bbox = await getBbox()
+
+            //选择框过大时，退出
+            const x_range = bbox.getNorthEast().lng - bbox.getSouthWest().lng
+            const y_range = bbox.getNorthEast().lat - bbox.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+
+            //数据加载进度框
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+
+            //清除已有three对象
+            deleteMesh(scene1, 'mesh_compass')
+            deleteMesh(scene1, 'mesh_dem')
+            bridgeNameList.forEach(p => {
+                deleteMesh(scene1, p)
+            })
+            labelBridgeList.forEach(p => {
+                deleteMesh(scene1, p)
+            })
+
+
+
+            //dem地址
+            const DEMUrl = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox)
+            //dem数据
+            const demData = await fetch(DEMUrl)
+            const demData2 = demData.clone()
+            //dem生成mesh
+            const mesh_dem = await c_mesh_dem(demData, camera1, 'mesh_dem')
+            scene1.add(mesh_dem)
+
+            //纹理,先获取dom(img影像和cia影像注记混合)
+            const domTile = await c_dom_img_cia(bbox)
+            loadTexture(mesh_dem, domTile)
+
+            //指北针,先计算dem的bbox
+            const bbox_dem = new THREE.Box3().setFromObject(mesh_dem);
+            //compass生成mesh
+            const mesh_compass = await c_mesh_compass(bbox_dem, 'mesh_compass')
+            scene1.add(mesh_compass)
+
+            //bridge_point_list
+            const geo_point_bridge_list = await c_point_bridge(demData2, bbox_dem, bridgeList, bbox)
+            geo_point_bridge_list.forEach(p => {
+                scene1.add(p[0])
+                bridgeNameList.push(p[1])
+            })
+
+            //bridge_label_list,先根据范围计算字体大小
+            const fontSize = calFontSizeByGeoBBox(bbox)
+            const label_bridge_list = await c_label_bridge(geo_point_bridge_list, fontSize)
+            label_bridge_list.forEach(l => {
+                scene1.add(l)
+                labelBridgeList.push(l.name)
+            })
+
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+
+                $('#' + 'Window_3D').css('visibility', 'visible')
+                resolve();
+            })
+
+            function animate() {
+                requestAnimationFrame(animate);
+                updateSphereSizes(geo_point_bridge_list, camera1)
+
+                //指北针始终面向camera
+                mesh_compass.lookAt(camera1.position);
+
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+
+
+            await init3DViewCLick(scene1, renderer1, camera1, mesh_dem);
+
+            const rect = recTool.getRectangles()[0]
+
+
+
+            rect.addEventListener('mouseover', function () {
+                rect.addEventListener('click', RectClickHD)
+            })
+
+            rect.addEventListener('mouseout', function () {
+                rect.removeEventListener('click', RectClickHD)
+            })
+
+        }
+
+        function RectClickHD(e) {
+            console.log(e)
+        }
+
+        $('#clo_con1').on('click', function () {
+            clearMarkers(map,geo_marker_list,scene1,dem_marker_list)
+            $('#Window_3D').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 6.5);
+        })
+
+
+
+
+
+    </script>
+</body>
+
+</html>

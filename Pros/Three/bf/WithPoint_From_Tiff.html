@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #treeCon1 {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 450;
+        }
+
+        #fileInput {
+            position: absolute;
+            top: 50px;
+            right: 100px;
+            background-color: white;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="treeCon1"><input type="file" id="fileInput" accept=".tif,.tiff"></div>
+    <script>
+        const [scene, camera] = createScene($('#treeCon1'));
+
+        // const loader = new THREE.FontLoader();
+        // loader.load('/Public/js/helvetiker_regular.typeface.json', function (font) {
+        //     // 创建文本几何体
+        //     const textGeometry = new THREE.TextGeometry('N', {
+        //         font: font,
+        //         size: 0.1,
+        //         height: 0.02,
+        //         curveSegments: 1,
+        //         bevelEnabled: false,
+        //     });
+
+        //     // 创建材质
+        //     const textMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+
+        //     // 创建网格
+        //     const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+
+        //     // 居中文本
+        //     textGeometry.computeBoundingBox();
+        //     const textWidth = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+        //     textMesh.position.x = -textWidth / 2;
+
+        //     scene.add(textMesh);
+        // });
+
+
+        $('#fileInput').on('change', HD1)
+
+        //读取dem
+        function HD1() {
+            var ex_mesh = getMeshByName(scene, 'a')
+            if (ex_mesh) {
+                scene.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            const file = event.target.files[0]
+            loadDEMFromTiff(file, scene, camera, 'a')
+        }
+
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

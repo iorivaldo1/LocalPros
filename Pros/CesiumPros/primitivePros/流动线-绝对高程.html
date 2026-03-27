@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            // terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+
+       let source = `czm_material czm_getMaterial(czm_materialInput materialInput)
+      {
+         czm_material material = czm_getDefaultMaterial(materialInput);
+         vec2 st = materialInput.st;
+         vec4 colorImage = texture(image, vec2(fract((st.s - speed * czm_frameNumber * 0.001)), st.t));
+         material.alpha = colorImage.a;
+         material.diffuse = colorImage.rgb * 1.5 ;
+         return material;
+      }`;
+
+        const material = new Cesium.Material({
+            fabric: {
+                uniforms: {
+                    color: Cesium.Color.fromCssColorString("#7ffeff"),
+                    image: "/Public/imgs/flowArrow2.png",
+                    speed: 2,
+                },
+                source,
+            },
+            translucent: function () {
+                return true;
+            },
+        });
+        // 材质着色的外观
+        const appearance = new Cesium.PolylineMaterialAppearance();
+        appearance.material = material;
+        const primitive = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: new Cesium.PolylineGeometry({
+                    positions: Cesium.Cartesian3.fromDegreesArrayHeights([
+                        114.02, 25.02, 1000,
+                        114.05, 25.02, 1000
+                    ]),
+                    width: 5.0,
+                })
+            }),
+            appearance,
+            asynchronous: false,
+        });
+
+        viewer.scene.primitives.add(primitive);
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(114.02, 25.01, 10000),
+            duration: 0
+        })
+
+    </script>
+    </div>
+</body>
+
+</html>

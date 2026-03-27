@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script>
+        let terrainMesh = null;
+        let heightScale = 0.5;
+        let smoothness = 3;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // 创建相机
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 20, 3);
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 添加光源
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        const points = [new THREE.Vector3(-10, 0, 0), new THREE.Vector3(0, 0, 0), new THREE.Vector3(10, 0, 10), new THREE.Vector3(20, 0, 50)]
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+        const linePositions = new Float32Array([0, 1]); // 起点为0，终点为1
+        const textureLoader = new THREE.TextureLoader();
+        const colorTexture = textureLoader.load('/Public/imgs/spriteLine2.png');
+        const lineMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                // 定义一个颜色uniform
+                colorTexture: { value: colorTexture },
+                time: { value: 0 }
+            },
+            vertexShader: testLineVS2,
+            fragmentShader: testLineFS2,
+        });
+
+        const thickLine = createThickLineWithContinuousProgress(points, lineMaterial, 0.9);
+        thickLine.rotation.x = -Math.PI / 2
+        scene.add(thickLine);
+
+        // 添加控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            lineMaterial.uniforms.time.value += 0.001;
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        function createThickLineWithContinuousProgress(points, material, thickness = 0.1) {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            const indices = [];
+            const uvs = [];
+            const lineProgress = [];
+
+            // 预计算每个点的累计长度
+            const cumulativeLengths = [0];
+            let totalLength = 0;
+
+            for (let i = 1; i < points.length; i++) {
+                const length = points[i - 1].distanceTo(points[i]);
+                totalLength += length;
+                cumulativeLengths.push(totalLength);
+            }
+
+            for (let i = 0; i < points.length - 1; i++) {
+                const current = points[i];
+                const next = points[i + 1];
+
+                // 计算方向向量
+                const direction = new THREE.Vector3().subVectors(next, current).normalize();
+                const perpendicular = new THREE.Vector3(-direction.y, direction.x, 0).normalize();
+                const halfWidth = thickness / 2;
+
+                // 计算四个角点
+                const v1 = current.clone().add(perpendicular.clone().multiplyScalar(halfWidth));
+                const v2 = current.clone().add(perpendicular.clone().multiplyScalar(-halfWidth));
+                const v3 = next.clone().add(perpendicular.clone().multiplyScalar(halfWidth));
+                const v4 = next.clone().add(perpendicular.clone().multiplyScalar(-halfWidth));
+
+                const baseIndex = i * 4;
+
+                // 添加顶点
+                vertices.push(v1.x, v1.y, v1.z);
+                vertices.push(v2.x, v2.y, v2.z);
+                vertices.push(v3.x, v3.y, v3.z);
+                vertices.push(v4.x, v4.y, v4.z);
+
+                // 计算整体进度（基于累计长度）
+                const startProgress = cumulativeLengths[i] / totalLength;
+                const endProgress = cumulativeLengths[i + 1] / totalLength;
+
+                // 添加 UV 坐标
+                uvs.push(startProgress, 0); // v1
+                uvs.push(startProgress, 1); // v2
+                uvs.push(endProgress, 0);   // v3
+                uvs.push(endProgress, 1);   // v4
+
+                // 添加 lineProgress 属性
+                lineProgress.push(
+                    startProgress, // v1
+                    startProgress, // v2  
+                    endProgress,   // v3
+                    endProgress    // v4
+                );
+
+                // 添加三角形索引
+                indices.push(
+                    baseIndex, baseIndex + 1, baseIndex + 2,
+                    baseIndex + 2, baseIndex + 1, baseIndex + 3
+                );
+            }
+
+            geometry.setIndex(indices);
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geometry.setAttribute('lineProgress', new THREE.Float32BufferAttribute(lineProgress, 1));
+
+            return new THREE.Mesh(geometry, material);
+        }
+    </script>
+</body>
+
+</html>

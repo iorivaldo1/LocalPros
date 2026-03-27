@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .three_res {
+            position: absolute;
+            top: 20px;
+            right: 100px;
+            display: flex;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .three_container {
+            position: relative;
+            margin-left: 20px;
+            width: 600px;
+            height: 600px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .close_con_btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+
+
+        .query-res-table {
+            position: absolute;
+            top: 240px;
+            left: 300px;
+            background-color: #005a7b8a;
+            z-index: 450;
+        }
+
+        #query-res-header {
+            padding: 2px;
+            height: 25px;
+            cursor: move;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+
+    <div class="three_res">
+        <div class="three_container" id="treeCon1">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="close_con_btn" id="clo_con1">X</button>
+        </div>
+    </div>
+
+    <script>
+        var maxElevation = -Infinity;
+        var minElevation = -Infinity;
+        var meshPointNameList = []
+
+        var bridgeList = []
+        var qlIconUrl = "/Public/imgs/bridge.png";
+        var icon = new T.Icon({
+            iconUrl: qlIconUrl, //请求图标图片的URL
+            iconSize: new T.Point(15, 15), //图标可视区域的大小。
+            iconAnchor: new T.Point(7.5, 7.5), //图标的定位锚点
+        });
+        $.get('http://localhost:8080/localGEO/getYABridge').then(res => {
+            res.forEach(b => {
+                const b_jd = parseFloat(b.geometry.split(' ')[0].split('(')[1]).toFixed(5)
+                const b_wd = parseFloat(b.geometry.split(' ')[1].replace(')', '')).toFixed(5)
+                bridgeList.push([b_jd, b_wd, b.bridgeName])
+                var bridge_pos_tdt = new T.LngLat(b_jd, b_wd);
+                var marker = new T.Marker(bridge_pos_tdt, {
+                    icon: icon,
+                });
+                map.addOverLay(marker);
+            })
+        })
+
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DEM/wms?REQUEST=GetCapabilities', 'DEM_YA_FABDEM')//DEM范围框
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DOM/wms?REQUEST=GetCapabilities', 'ya')//DOM范围框
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera.position.set(1, 0, 3);
+
+        const [scene1,control1,renderer1] = createScene($('#treeCon1'), camera);
+        $('#getDem').on('click', HD1)
+
+        async function initThree(scene,control,renderer, demUrl, domUrl, pointList, bounds, loadIndex) {
+            deleteMesh(scene, 'mesh_n_arrow')
+            deleteMesh(scene, 'mesh_fab')
+            meshPointNameList.forEach(p => {
+                deleteMesh(scene, p)
+            })
+
+            // 加载dem底座
+            const demData = await fetch(demUrl)
+            const demData2 = demData.clone()
+            const mesh = await createDEMMesh_AWAIT(demData, camera, 'mesh_fab')
+            scene.add(mesh) // scene.add 是同步的
+
+            // 加载指北针
+            const bbox_dem = new THREE.Box3().setFromObject(mesh);
+            const textMesh = await createTextMesh(bbox_dem, 'N')
+            scene.add(textMesh) // scene.add 是同步的
+
+            // 加载dom - 将 textureLoader.load 包装成 Promise
+            await new Promise((resolve, reject) => {
+                const textureLoader4 = new THREE.TextureLoader();
+                textureLoader4.load(
+                    domUrl,
+                    function (texture) {
+                        mesh.material.map = texture
+                        mesh.material.side = THREE.DoubleSide
+                        mesh.material.needsUpdate = true
+                        resolve(); // 加载完成
+                    },
+                    undefined,
+                    function (error) {
+                        reject(error); // 加载失败
+                    }
+                )
+            })
+
+            // 加载点位
+            const cnList = []
+            //创建point，y值为0
+            const pointGeo = await createPointGeo(bbox_dem, pointList, bounds)
+            pointGeo.forEach(p => { // forEach 是同步的
+                scene.add(p[0])
+                meshPointNameList.push(p[3])
+                // getEleByCoord(demData2,p[1],p[2])
+                cnList.push([p[1],p[2]])
+            })
+            //根据point坐标，从demData读取ele值
+            const eleList = await getEleByCoordList(demData2,cnList)
+            //更新point的y坐标
+            for(let i=0;i<eleList.length;i++){
+                pointGeo[i][0].position.y = eleList[i]
+            }
+            //最后显示窗口
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+                $('#treeCon1').css('visibility', 'visible')
+                resolve();
+            })
+
+            function animate() {
+                requestAnimationFrame(animate);
+                updateSphereSizes(pointGeo)
+                control.update();
+                renderer.render(scene, camera);
+
+            }
+            animate();
+        }
+        function HD1() {
+            $('#treeCon1').css('visibility', 'hidden')
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                if (x_range >= 0.08 || y_range >= 0.08) {
+                    layer.alert('框选范围过大！请重新选择范围');
+                    recTool.clear();
+                    return;
+                }
+                var loadIndex = layer.msg('数据加载中', {
+                    icon: 16,
+                    shade: 0.01,
+                    time: false
+                });
+                var [dom_ya_URL, x_range, y_range] = createDOMUrl('http://localhost:8080/geoserver/WMS_DOM/wms?', e)
+                var FABDEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_YA_FABDEM', e)
+                initThree(scene1,control1,renderer1, FABDEM_WCS_UR, dom_ya_URL, bridgeList, e.currentBounds, loadIndex)
+            })
+        }
+
+        $('#clo_con1').on('click', function () {
+            var ex_mesh = getMeshByName(scene1, 'mesh_cop')
+            if (ex_mesh) {
+                scene1.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon1').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+
+    </script>
+</body>
+
+</html>

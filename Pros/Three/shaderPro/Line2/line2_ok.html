@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- <script src="/Public/js/three.min.js"></script> -->
+    <!-- <script src="/Public/js/OrbitControls.js"></script> -->
+    <script type="module" src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script type="importmap">
+			{
+				"imports": {
+					"three": "/Public/lib/three/three.module.js",
+					"three/addons/": "/Public/lib/three/jsm/"
+				}
+			}
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { Line2 } from 'three/addons/lines/Line2.js';
+        import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+        import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+        import * as GeometryUtils from 'three/addons/utils/GeometryUtils.js';
+
+        let terrainMesh = null;
+        let heightScale = 0.5;
+        let smoothness = 3;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // 创建相机
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 20, 3);
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 添加光源
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const points = [
+            new THREE.Vector3(-10, 0, 0),
+            new THREE.Vector3(0, 10, 0),  // Changed Y to make it more visible
+            new THREE.Vector3(10, 0, 10)
+        ];
+
+        const geometry = new LineGeometry();
+        // Convert Vector3 points to flat array
+        const positions = [];
+        points.forEach(point => {
+            positions.push(point.x, point.y, point.z);
+        });
+        geometry.setPositions(positions);
+
+        const matLine = new LineMaterial({
+            color: 0xffff00,  // Fixed color (yellow)
+            linewidth: 0.2,
+            vertexColors: false,  // Set to false since we're using a single color
+            dashed: false,
+            alphaToCoverage: false,
+            worldUnits: true  // Important for consistent line width
+        });
+
+        const line = new Line2(geometry, matLine);
+        line.computeLineDistances();
+        scene.add(line);
+
+
+
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+
+    </script>
+</body>
+
+</html>

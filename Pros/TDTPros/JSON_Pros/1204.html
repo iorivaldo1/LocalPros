@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #mapDiv {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getLocation {
+
+            position: absolute;
+            bottom: 50px;
+            left: 20px;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapDiv">
+        <button id="getLocation">定位</button>
+    </div>
+
+    <script type="module">
+        var map = new T.Map("mapDiv")
+        var zoom = 5;
+        map.centerAndZoom(new T.LngLat(103, 33), zoom);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        )
+        map.addControl(ctrl)
+        const marker = new T.Marker(new T.LngLat(0, 0));// 创建标注
+
+        const json_data = await readJSONFile('/Public/data/a.json')
+        json_data.pois.forEach(poi => {
+            const jd = poi.location.split(',')[0].replace('"', '')
+            const wd = poi.location.split(',')[1].replace('"', '')
+            const [jd_trans, wd_trans] = coord_trans_gd_wgs84(jd, wd)
+            const name = poi.name
+            const point_lnglat = new T.LngLat(jd_trans, wd_trans)
+            const marker = new T.Marker(point_lnglat);// 创建标注
+            map.addOverLay(marker)
+            const label = new T.Label({
+                text: name,
+                position: marker.getLngLat(),
+                offset: new T.Point(3, -30)
+            });
+            map.addOverLay(label);
+
+
+        })
+        function readJSONFile(filePath) {
+            return new Promise((resolve, reject) => {
+                fetch(filePath)
+                    .then(response => {
+                        if (!response.ok) {
+                            reject(new Error(`HTTP错误: ${response.status}`));
+                        }
+                        return response.json();
+                    })
+                    .then(data => resolve(data))
+                    .catch(error => reject(error));
+            });
+        }
+
+        $('#getLocation').on('click', function () {
+            navigator.geolocation.getCurrentPosition(function (pos) {
+                const jd = pos.coords.longitude; // 经度
+                const wd = pos.coords.latitude;   // 纬度
+                map.centerAndZoom(new T.LngLat(jd, wd), 18);
+                const point_lnglat = new T.LngLat(jd, wd)
+                marker.setLngLat(point_lnglat)
+                map.addOverLay(marker)
+
+                const label = new T.Label({
+                    text: `${jd.toFixed(5)},${wd.toFixed(5)}`,
+                    position: marker.getLngLat(),
+                    offset: new T.Point(3, -30),
+                });
+                map.addOverLay(label)
+            })
+        })
+    </script>
+</body>
+
+</html>

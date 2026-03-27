@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #treeCon1 {
+            position: absolute;
+            top: 20px;
+            right: 100px;
+            width: 600px;
+            height: 600px;
+            background-color: rgba(136, 147, 161, 0.3);
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        #btn1 {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #btn2 {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+
+        .query-res-table {
+            position: absolute;
+            top: 240px;
+            left: 300px;
+            background-color: #005a7b8a;
+            z-index: 450;
+        }
+
+        #query-res-header {
+            padding: 2px;
+            height: 25px;
+            cursor: move;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="btn1">T</button>
+
+    <div id="treeCon1">
+        <button id="btn2">X</button>
+    </div>
+
+    <script>
+        const moveAbleTable = document.getElementById('treeCon1');
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        moveAbleTable.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            isDragging = true;
+            offsetX = e.clientX - moveAbleTable.offsetLeft;
+            offsetY = e.clientY - moveAbleTable.offsetTop;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            e.stopPropagation();
+            if (!isDragging) return;
+            moveAbleTable.style.left = `${e.clientX - offsetX}px`;
+            moveAbleTable.style.top = `${e.clientY - offsetY}px`;
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            e.stopPropagation();
+            isDragging = false;
+        });
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        // setSourceBounds('http://localhost:8080/geoserver/WMS_DEM/wms?REQUEST=GetCapabilities', 'DEM_YA_COP')
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DEM/wms?REQUEST=GetCapabilities', 'DEM_YA_FABDEM')
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DOM/wms?REQUEST=GetCapabilities', 'ya')
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+        const [scene, camera] = createScene($('#treeCon1'));
+        $('#btn1').on('click', HD1)
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                var dem_COP_URL = createDEMUrl('http://localhost:8080/geoserver/WMS_DEM/wms?', e)
+                var [dom_ya_URL, x_range, y_range] = createDOMUrl('http://localhost:8080/geoserver/WMS_DOM/wms?', e)
+
+                if (x_range >= 0.08 || y_range >= 0.08) {
+                    layer.alert('框选范围过大！请重新选择范围');
+                    recTool.clear();
+                    return;
+                }
+
+                var loadIndex = layer.msg('数据加载中', {
+                    icon: 16,
+                    shade: 0.01,
+                    time: false
+                });;
+                const textureLoader = new THREE.TextureLoader();
+
+                textureLoader.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene, 'mesh_n_arrow')
+                        deleteMesh(scene, 'mesh_cop')
+
+                        fetch(dem_COP_URL).then(res => {
+                            return loadDEMFromGeoServer(res, scene, camera, 'mesh_cop')
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon1').css('visibility', 'visible')
+                        })
+                    },
+                )
+            })
+        }
+
+        $('#btn2').on('click', function () {
+            var ex_mesh = getMeshByName(scene, 'mesh_cop')
+            if (ex_mesh) {
+                scene.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon1').css('visibility', 'hidden')
+            recTool.clear();
+        })
+    </script>
+</body>
+
+</html>

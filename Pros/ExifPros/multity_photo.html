@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/exif.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #fileInput {
+            position: absolute;
+            top: 50px;
+            right: 100px;
+            background-color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <input type="file" id="fileInput" accept=".jpg" multiple>
+    <script>
+        $('#fileInput').on('change', HD1)
+        function HD1() {
+            const files = event.target.files
+            console.log(files)
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                EXIF.getData(file, function () {
+                    const allExifData = EXIF.getAllTags(this);
+                    const jd = allExifData.GPSLongitude[0] + allExifData.GPSLongitude[1] / 60 + allExifData.GPSLongitude[2] / 3600
+                    const wd = allExifData.GPSLatitude[0] + allExifData.GPSLatitude[1] / 60 + allExifData.GPSLatitude[2] / 3600
+
+                    console.log(jd, wd)
+                })
+
+            }
+        }
+    </script>
+</body>
+
+</html>

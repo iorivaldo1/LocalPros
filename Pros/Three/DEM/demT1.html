@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        #fileInput {
+            position: absolute;
+            top: 50px;
+            right: 100px;
+            background-color: white;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <input type="file" id="fileInput" accept=".tif,.tiff">
+    <script>
+        $('#fileInput').on('change', HD1)
+        async function getEleByCoordWithGeoTiff(demFile,lng,lat) {
+            const arrayBuffer = await demFile.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+
+            const width = image.getWidth();
+            const height = image.getHeight();
+            const bbox = image.getBoundingBox();
+
+            //计算左上角地理坐标
+            const geoX = bbox[0]
+            const geoY = bbox[3]
+            //计算像元大小
+            const pixelSizeX = (bbox[2] - bbox[0]) / width;
+            const pixelSizeY = (bbox[3] - bbox[1]) / height;
+            // 计算像素坐标
+            const col = Math.floor((lng - geoX) / pixelSizeX);
+            const row = Math.floor((geoY - lat) / pixelSizeY); // Y轴反向
+
+            const window = [col, row, col + 1, row + 1];
+            const data = await image.readRasters({ window });
+            console.log(data[0][0])
+        }
+
+        async function getPixelFromGeoTIFF(demFile, lng, lat) {
+            const arrayBuffer = await demFile.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const bbox = image.getBoundingBox();
+            const pixelWidth = image.getWidth();
+            const pixelHeight = image.getHeight();
+
+            // 获取地理坐标到像素坐标的转换函数
+            const [x, y] = image.fileDirectory.ModelTiepoint
+                ? image.getFileDirectory().ModelTiepoint.slice(3, 5)
+                : [bbox[0], bbox[3]];
+
+            const [scaleX, scaleY] = image.getFileDirectory().ModelPixelScale
+                ? image.getFileDirectory().ModelPixelScale.slice(0, 2)
+                : [(bbox[2] - bbox[0]) / pixelWidth, (bbox[3] - bbox[1]) / pixelHeight];
+            // console.log(scaleX,scaleY)
+            // 计算像元索引
+            const col = Math.floor((lng - x) / scaleX);
+            const row = Math.floor((y - lat) / scaleY); // Y轴反向
+
+            console.log(col, row)
+        }
+
+        async function getElevationAtCoordinate(demFile, lng, lat) {
+            const arrayBuffer = await demFile.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const fd = image.getFileDirectory();
+            const bbox = image.getBoundingBox();
+            // console.log(fd.ModelTiepoint)
+            // 获取地理参考信息
+            let geoX, geoY, pixelSizeX, pixelSizeY;
+
+            if (fd.ModelTiepoint && fd.ModelPixelScale) {
+                const [pixelRefX, pixelRefY, , geoRefX, geoRefY] = fd.ModelTiepoint;
+                [pixelSizeX, pixelSizeY] = fd.ModelPixelScale;
+
+                //左上地理坐标
+                geoX = geoRefX;
+                geoY = geoRefY;
+            } else {
+                // 回退方案：使用边界框计算
+                geoX = bbox[0];
+                geoY = bbox[3]; // 注意：Y轴通常是反向的
+                pixelSizeX = (bbox[2] - bbox[0]) / fd.ImageWidth;
+                pixelSizeY = (bbox[3] - bbox[1]) / fd.ImageLength;
+            }
+
+            // 计算像素坐标
+            const col = Math.floor((lng - geoX) / pixelSizeX);
+            const row = Math.floor((geoY - lat) / pixelSizeY); // Y轴反向
+
+            // 检查边界
+            if (col < 0 || col >= fd.ImageWidth || row < 0 || row >= fd.ImageLength) {
+                throw new Error(`坐标 (${lng}, ${lat}) 不在TIFF范围内`);
+            }
+
+            // 读取高程数据
+            const window = [col, row, col + 1, row + 1];
+            const data = await image.readRasters({ window });
+            console.log(data[0][0])
+            return data[0][0]; // 返回第一个波段的高程值
+        }
+
+        async function getEleByCoord(demFile, lng, lat) {
+            const arrayBuffer = await demFile.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+
+            const width = image.getWidth();
+            const height = image.getHeight();
+            const bbox = image.getBoundingBox();
+
+            //计算左上角地理坐标
+            const geoX = bbox[0]
+            const geoY = bbox[3]
+            //计算像元大小
+            const pixelSizeX = (bbox[2] - bbox[0]) / width;
+            const pixelSizeY = (bbox[3] - bbox[1]) / height;
+            // 计算像素坐标
+            const col = Math.floor((lng - geoX) / pixelSizeX);
+            const row = Math.floor((geoY - lat) / pixelSizeY); // Y轴反向
+            const cnIndex = row * width + col
+            console.log(rasters[0][cnIndex])
+        }
+        function HD1() {
+            const file = event.target.files[0]
+            // getEleByCoordWithGeoTiff(file,99.399969, 30.305384)
+            // getElevationAtCoordinate(file, 99.399969, 30.305384)
+
+            getEleByCoord(file, 99.399903, 30.305379)
+            
+        }
+
+
+    </script>
+</body>
+
+</html>

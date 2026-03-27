@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="../Public/js/three.min.js"></script>
+    <script src="../Public/js/three_shaders.js"></script>
+    <script src="../Public/js/OrbitControls.js"></script>
+    <script src="../Public/js/jquery-3.7.1.min.js"></script>
+    <script src="../Public/js/geotiff.js"></script>
+    <title>Three.js DEM地形渲染</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            padding: 20px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.2em;
+            color: #2c3e50;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+
+        .content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .controls {
+            width: 300px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .slider-container label {
+            width: 120px;
+            font-size: 0.9em;
+        }
+
+        .slider-container input {
+            flex: 1;
+        }
+
+        .slider-value {
+            width: 50px;
+            text-align: right;
+            margin-left: 10px;
+            font-size: 0.9em;
+        }
+
+        .color-legend {
+            height: 20px;
+            background: linear-gradient(to right, blue, cyan, green, yellow, orange, red);
+            border-radius: 3px;
+            margin: 10px 0;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8em;
+            color: #7f8c8d;
+        }
+
+        .file-input {
+            margin-bottom: 20px;
+        }
+
+        .file-input input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #f8f9fa;
+        }
+
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+
+        .instructions h3 {
+            margin-top: 0;
+            color: #1565c0;
+        }
+
+        .instructions ul {
+            padding-left: 20px;
+            margin-bottom: 0;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+        }
+
+        .button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+
+        .button:hover {
+            background: #2980b9;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DEM地形可视化</h1>
+            <div class="subtitle">使用Three.js渲染数字高程模型(TIFF格式)</div>
+        </div>
+        <div class="content">
+            <div class="canvas-container">
+                <canvas id="renderCanvas"></canvas>
+                <div class="loading" id="loadingIndicator">正在加载和处理DEM数据...</div>
+            </div>
+            <div class="controls">
+                <div class="control-group">
+                    <div class="control-title">文件输入</div>
+                    <div class="file-input">
+                        <input type="file" id="demFileInput" accept=".tif,.tiff">
+                    </div>
+                    <button id="renderButton" class="button">渲染地形</button>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">地形设置</div>
+                    <div class="slider-container">
+                        <label for="heightScale">高度比例:</label>
+                        <input type="range" id="heightScale" min="0.1" max="2" step="0.1" value="0.5">
+                        <span class="slider-value" id="heightScaleValue">0.5</span>
+                    </div>
+                    <div class="slider-container">
+                        <label for="smoothness">平滑度:</label>
+                        <input type="range" id="smoothness" min="1" max="10" step="1" value="3">
+                        <span class="slider-value" id="smoothnessValue">3</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">颜色映射</div>
+                    <div class="color-legend"></div>
+                    <div class="legend-labels">
+                        <span>低海拔</span>
+                        <span>高海拔</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">场景控制</div>
+                    <div class="slider-container">
+                        <label for="rotationSpeed">旋转速度:</label>
+                        <input type="range" id="rotationSpeed" min="0" max="1" step="0.1" value="0.3">
+                        <span class="slider-value" id="rotationSpeedValue">0.3</span>
+                    </div>
+                    <button id="resetCamera" class="button">重置相机</button>
+                </div>
+
+                <div class="instructions">
+                    <h3>使用说明</h3>
+                    <ul>
+                        <li>上传DEM TIFF文件并点击"渲染地形"</li>
+                        <li>使用鼠标拖拽来旋转视角</li>
+                        <li>使用鼠标滚轮来缩放</li>
+                        <li>调整高度比例来夸大或减小地形起伏</li>
+                        <li>颜色从蓝色(低)到红色(高)表示海拔高度</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let scene, camera, renderer, controls;
+        let terrainMesh = null;
+        let heightScale = 0.5;
+        let rotationSpeed = 0.0;
+        let isRotating = true;
+
+        // 初始化Three.js场景
+        function initThreeJS() {
+            // 创建场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+
+            // 创建相机
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / (window.innerHeight - 80), 0.1, 1000);
+            camera.position.set(0, 2, 3);
+
+            // 创建渲染器
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('renderCanvas'), antialias: true });
+            renderer.setSize(document.querySelector('.canvas-container').offsetWidth,
+                document.querySelector('.canvas-container').offsetHeight);
+
+            // 添加轨道控制
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // 添加环境光和方向光
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // 添加网格辅助
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+
+            // 添加坐标轴辅助
+            const axesHelper = new THREE.AxesHelper(2);
+            scene.add(axesHelper);
+
+            // 监听窗口大小变化
+            window.addEventListener('resize', onWindowResize);
+
+            // 开始动画循环
+            animate();
+        }
+
+        // 窗口大小变化处理
+        function onWindowResize() {
+            camera.aspect = document.querySelector('.canvas-container').offsetWidth /
+                document.querySelector('.canvas-container').offsetHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(document.querySelector('.canvas-container').offsetWidth,
+                document.querySelector('.canvas-container').offsetHeight);
+        }
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isRotating && terrainMesh) {
+                terrainMesh.rotation.y += rotationSpeed * 0.01;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 加载并解析TIFF文件
+        async function loadDEMFromGeoServer(file) {
+            document.getElementById('loadingIndicator').style.display = 'block';
+
+            try {
+                // 使用GeoTIFF.js读取TIFF文件
+                const arrayBuffer = await file.arrayBuffer();
+                const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+                const image = await tiff.getImage();
+                const rasters = await image.readRasters();
+
+                // 获取图像宽度和高度
+                const width = image.getWidth();
+                const height = image.getHeight();
+
+                // 获取高程数据（假设数据在第一个波段）
+                let elevationData;
+                if (rasters[0] instanceof Float32Array) {
+                    elevationData = rasters[0];
+                } else if (rasters[0] instanceof Int16Array) {
+                    elevationData = new Float32Array(rasters[0]);
+                } else {
+                    // 转换为Float32Array
+                    elevationData = new Float32Array(rasters[0]);
+                }
+
+                // 处理高程数据并创建地形
+                processElevationData(elevationData, width, height);
+            } catch (error) {
+                console.error('Error loading DEM file:', error);
+                alert('无法加载DEM文件: ' + error.message);
+            } finally {
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+        }
+
+        // 处理高程数据并创建地形网格
+        function processElevationData(data, width, height) {
+            // 移除现有的地形
+            if (terrainMesh) {
+                scene.remove(terrainMesh);
+                terrainMesh.geometry.dispose();
+                terrainMesh.material.dispose();
+            }
+
+            // 创建平面几何体
+            const geometry = new THREE.PlaneGeometry(5, 5, width - 1, height - 1);
+
+            // 获取平滑度参数
+            const smoothness = parseInt(document.getElementById('smoothness').value);
+
+            // 应用高程数据到顶点
+            const vertices = geometry.attributes.position.array;
+            const maxElevation = Math.max(...data);
+            const minElevation = Math.min(...data);
+
+            for (let i = 0, j = 0; i < vertices.length; i += 3, j++) {
+                if (j < data.length) {
+                    // 应用高度比例和平滑度
+                    vertices[i + 2] = (data[j] - minElevation) / (maxElevation - minElevation) * heightScale * smoothness;
+                }
+            }
+
+            // 更新法线
+            geometry.computeVertexNormals();
+
+            // 创建基于高程的颜色
+            const colors = [];
+            for (let i = 0, j = 0; i < vertices.length; i += 3, j++) {
+                if (j < data.length) {
+                    const elevation = (data[j] - minElevation) / (maxElevation - minElevation);
+                    const color = new THREE.Color();
+                    color.setHSL(0.7 * (1 - elevation), 1, 0.5);
+                    colors.push(color.r, color.g, color.b);
+                }
+            }
+
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            // 创建材质
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                flatShading: false
+            });
+
+            // 创建网格
+            terrainMesh = new THREE.Mesh(geometry, material);
+            terrainMesh.rotation.x = -Math.PI / 2;
+            scene.add(terrainMesh);
+
+            // 调整相机位置
+            camera.position.set(0, 2, 3);
+            controls.reset();
+
+            // 添加统计信息
+            console.log(`DEM数据解析完成: ${width}x${height} 像素`);
+            console.log(`高程范围: ${minElevation.toFixed(2)} 到 ${maxElevation.toFixed(2)}`);
+        }
+
+        // 初始化UI事件
+        function initUI() {
+            // 文件选择事件
+            document.getElementById('renderButton').addEventListener('click', () => {
+                const fileInput = document.getElementById('demFileInput');
+                if (fileInput.files.length > 0) {
+                    loadDEMFromGeoServer(fileInput.files[0]);
+                } else {
+                    alert('请先选择一个DEM TIFF文件');
+                }
+            });
+
+            // 高度比例滑块事件
+            const heightScaleSlider = document.getElementById('heightScale');
+            const heightScaleValue = document.getElementById('heightScaleValue');
+
+            heightScaleSlider.addEventListener('input', (e) => {
+                heightScale = parseFloat(e.target.value);
+                heightScaleValue.textContent = heightScale.toFixed(1);
+
+                // 如果已有地形，重新应用高度比例
+                if (terrainMesh) {
+                    // 在实际项目中，这里需要重新处理高程数据
+                    // 为了简化，我们只是重新设置了一个示例地形
+                    createExampleTerrain();
+                }
+            });
+
+            // 平滑度滑块事件
+            const smoothnessSlider = document.getElementById('smoothness');
+            const smoothnessValue = document.getElementById('smoothnessValue');
+
+            smoothnessSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                smoothnessValue.textContent = value;
+
+                if (terrainMesh) {
+                    createExampleTerrain();
+                }
+            });
+
+            // 旋转速度滑块事件
+            const rotationSpeedSlider = document.getElementById('rotationSpeed');
+            const rotationSpeedValue = document.getElementById('rotationSpeedValue');
+
+            rotationSpeedSlider.addEventListener('input', (e) => {
+                rotationSpeed = parseFloat(e.target.value);
+                rotationSpeedValue.textContent = rotationSpeed.toFixed(1);
+            });
+
+            // 重置相机按钮
+            document.getElementById('resetCamera').addEventListener('click', () => {
+                camera.position.set(0, 2, 3);
+                controls.reset();
+            });
+
+            // 初始创建一个示例地形
+            createExampleTerrain();
+        }
+
+        // 创建示例地形（在没有上传文件时显示）
+        function createExampleTerrain() {
+            const width = 50;
+            const height = 50;
+            const data = new Float32Array(width * height);
+
+            // 生成一些随机地形数据
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const value = Math.sin(x / 5) * Math.cos(y / 5) +
+                        0.5 * Math.sin(x / 2) * Math.cos(y / 2) +
+                        0.2 * Math.random();
+                    data[y * width + x] = value;
+                }
+            }
+
+            processElevationData(data, width, height);
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', () => {
+            initThreeJS();
+            initUI();
+        });
+    </script>
+</body>
+
+</html>

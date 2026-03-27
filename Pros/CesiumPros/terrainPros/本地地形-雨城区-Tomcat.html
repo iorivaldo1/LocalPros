@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+        var ip = window.location.host.split(':')[0] + ':8083';
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            // terrain: Cesium.Terrain.fromWorldTerrain(),
+            // terrainProvider: new Cesium.CesiumTerrainProvider({
+            //         url: `http://${ip}/terrain/甘孜地形切片/鲜水河`,
+            //         minimumLevel: 0,
+            //         maximumLevel: 15,
+            //     }),
+            terrainProvider: await Cesium.CesiumTerrainProvider.fromUrl(
+                // `http://${ip}/terrain/甘孜地形切片/鲜水河`,
+                `http://${ip}/terrain/yuchen`,
+            )
+        });
+       
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(103, 30, 5000),
+            duration: 0
+        })
+
+    </script>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="./f3d.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 650px;
+            background-color: rgba(30, 30, 40, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        .v_header {
+            user-select: none;
+            display: flex;
+            /* Flexbox layout */
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background-color: rgba(255, 255, 255, 0.05);
+            /* Subtle header bg */
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px 15px;
+            background-color: rgba(30, 30, 40, 0.75);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            transition: all 0.3s ease;
+        }
+
+        #getDem:hover {
+            background-color: rgba(60, 60, 80, 0.9);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .three_container {
+            flex: 1;
+            /* Fill remaining vertical space */
+            width: calc(100% - 10px);
+            /* Adjust for margin */
+            margin: 5px auto 10px auto;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: rgba(0, 0, 0, 0.2);
+            /* Placeholder bg */
+        }
+
+        /* Updated button styles */
+        .header_controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .viewer_ctrl_btns {
+            position: static;
+            /* Reset absolute positioning */
+            margin: 0;
+            width: 24px;
+            height: 24px;
+            border: none;
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .viewer_ctrl_btns:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .viewer_ctrl_btns.close-btn:hover {
+            background-color: rgba(255, 60, 60, 0.6);
+        }
+
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-select" id="map"></div>
+    <button class="no-select" id="getDem">T</button>
+
+    <div class="no-select" id="coordSwitchButton">
+        <span>显示坐标</span>
+        <button class="switch">
+            <span class="switch_circle circle_left"></span>
+        </button>
+    </div>
+
+    <div id="coordInfoContainer">
+        <span id="coord"></span>
+    </div>
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM | DOM来源:天地图</span>
+            <div class="header_controls">
+                <button class="viewer_ctrl_btns" id="reloadScene1" title="Reload View">R</button>
+                <button class="viewer_ctrl_btns close-btn" id="clo_con1" title="Close">X</button>
+            </div>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+    </div>
+    <script>
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        var map = new T.Map('map');
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(102.809, 30.118), 18);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        //tdt中：tile网格线
+        let demOverLayerList = []
+
+        //设置dem范围
+        setSourceBounds('http://8.155.1.150:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_YA_FABDEM')
+
+        //显示坐标功能
+        regShowCoord(map);
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        $('#getDem').on('click', HD1)
+        async function HD1() {
+            //不能使用map.clearOverLays()--因为map中的空间要素(河流、桥梁等)不要被清除
+            clearOverLays()
+
+            //interact组件设置窗口拉伸缩放
+            init3DViewDragResize('Window_3D')
+
+            //避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden')
+            //拉框工具
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            let bbox_geo = await getBbox()
+            //选择框过大时，退出
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            } else if (x_range <= 0.0003 || y_range <= 0.0003) {
+                layer.alert('框选范围过小！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+            //数据加载进度框
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]),//左下
+                new T.LngLat(bounds[2], bounds[3]) //右上
+            )
+            //构造扩大范围矩形
+            const geo_rectangle = []
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng()
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat()
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng()
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat()
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny))
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            })
+            map.addOverLay(rect)
+            demOverLayerList.push(rect)
+            recTool.clear()
+            //由于dem的范围是扩大后的范围，所以需要重新获取dem数据
+            const demData = await fetch(DEMUrl)
+            const demDataClone = demData.clone()
+            //demData.clone()只能读取一次，使用demDataClone.arrayBuffer()可以多次读取
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+
+            //清除scene中已有three对象,清除mesh内存
+            const old_dem_mesh = scene1.getObjectByName('mesh_dem')
+            if (old_dem_mesh) {
+                old_dem_mesh.geometry.dispose();
+                old_dem_mesh.material.dispose();
+            }
+            scene1.children.length = 0;
+            //dem生成mesh
+
+            const [mesh_dem, minEle, maxEle, geometry] = await c_mesh_dem(demDataArrayBuffer, camera1, 'mesh_dem')
+
+            //纹理1
+            const dem_mesh_material_img = new THREE.MeshBasicMaterial({ wireframe: true }) // Initialize with wireframe or default
+            const img_cia_tiles = await c_dom_img_cia_lv(bbox_geo_expand, 18)
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(img_cia_tiles.toDataURL('image/png'), function (res) {
+                dem_mesh_material_img.map = res
+                dem_mesh_material_img.side = THREE.DoubleSide
+                dem_mesh_material_img.wireframe = false // Turn off wireframe when texture loads
+                dem_mesh_material_img.needsUpdate = true
+            })
+            mesh_dem.material = dem_mesh_material_img
+
+            scene1.add(mesh_dem)
+
+            //避免出现白模，initThreeView异步最后让其显示
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+                $('#' + 'Window_3D').css('visibility', 'visible')
+                resolve();
+            })
+
+            function animate() {
+                requestAnimationFrame(animate);
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+
+        }
+
+        $('#clo_con1').on('click', function () {
+            clearOverLays()
+
+            $('#Window_3D').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 6.5);
+        })
+
+
+
+
+    </script>
+</body>
+
+</html>

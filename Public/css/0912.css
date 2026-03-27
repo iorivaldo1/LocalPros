@@ -1,0 +1,113 @@
+#map {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    cursor: auto;
+    top: 0px;
+    left: 0px;
+}
+
+#t1 {
+    position: absolute;
+    left: 20px;
+    bottom: 50px;
+    z-index: 450;
+}
+
+#echart {
+    position: absolute;
+    top: 100px;
+    right: 50px;
+    width: 30%;
+    height: 400px;
+    z-index: 450;
+}
+
+#coordSwitchButton {
+    background-color: #1e485a;
+    border-radius: 5px;
+    padding: 5px;
+    display: flex;
+    position: absolute;
+    z-index: 450;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    top: 15px;
+    left: 20px;
+    width: 90px;
+    border: 1px solid #0cf;
+    align-items: center;
+    justify-content: space-between;
+    width: 100px;
+}
+
+.sw_container,.sw_container_false{
+    background-color: #1e485a;
+    border-radius: 5px;
+    padding: 5px;
+    display: flex;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid #0cf;
+    align-items: center;
+    justify-content: space-between;
+}{
+    background-color: #1e485a;
+    border-radius: 5px;
+    padding: 5px;
+    display: flex;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid #0cf;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.switch {
+    margin-left: 5px;
+    position: relative;
+    box-sizing: content-box;
+    width: 25px;
+    height: 12px;
+    padding: 0;
+    border-radius: 40px;
+    border: 3px solid transparent;
+}
+
+.switch_active {
+    background-color: #506a9e;
+}
+
+.switch_circle {
+    position: absolute;
+    top:-1px;
+    width: 15px;
+    height: 15px;
+    background-color: #050d45;
+    border-radius: 50%;
+    transition: 0.5s;
+    left: 0;
+}
+
+.circle_right {
+    left: 11px;
+}
+
+#coordInfoContainer {
+    position: absolute;
+    left: 40%;
+    bottom: 20px;
+    background-color: rgba(41, 96, 117, 0.8);
+    z-index: 450;
+    height: 30px;
+}
+
+#coord {
+    color: rgb(251, 251, 251);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 1px;
+}

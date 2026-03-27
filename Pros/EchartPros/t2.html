@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>ECharts LiquidFill 渐变边框</title>
+    <script src="/Public/js/echarts.min.js"></script>
+    <script src="/Public/js/echarts-liquidfill.min.js"></script>
+    <style>
+        #main {
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main"></div>
+    <script>
+        var chart = echarts.init(document.getElementById('main'));
+        var option = {
+            series: [{
+                type: 'liquidFill',
+                radius: '80%',
+                data: [
+                    {
+                        value: 0.5,
+                        itemStyle: {
+                            color: '#28b5be66'
+                        }
+                    },
+                    {
+                        value: 0.5,
+                        itemStyle: {
+                            color: '#28b5be66'
+                        }
+                    },
+                    {
+                        value: 0.5,
+                        itemStyle: {
+                            color: '#28b5be66'
+                        }
+                    }
+                ],
+                outline: {
+                    show: true,
+                    borderDistance: 8,
+                    itemStyle: {
+                        color: {
+                            type: 'linear',
+                            x: 0,
+                            y: 0,
+                            x2: 0,
+                            y2: 1,
+                            colorStops: [{
+                                offset: 0,
+                                color: '#4582d7' // 浅蓝色起始
+                            }, {
+                                offset: 1,
+                                color: '#86e4f5' // 浅蓝色结束
+                            }]
+                        },
+                        borderWidth: 4
+                    }
+                },
+                backgroundStyle: {
+                    color: '#285281'
+                },
+                label: {
+                    show:false
+                }
+            }]
+        };
+        chart.setOption(option);
+    </script>
+</body>
+
+</html>

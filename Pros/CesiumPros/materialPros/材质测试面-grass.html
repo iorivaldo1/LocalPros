@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        const rectangle = new Cesium.RectangleGeometry({
+            ellipsoid: Cesium.Ellipsoid.default,
+            rectangle: Cesium.Rectangle.fromDegrees(90.0, 25, 110, 40),
+            height: 10000.0
+        });
+        const geometry = Cesium.RectangleGeometry.createGeometry(rectangle);
+
+        const materialAppearance = new Cesium.MaterialAppearance({
+            material: new Cesium.Material({
+                fabric: {
+                    type: 'Color',
+                    uniforms: {
+                        grassColor: new Cesium.Color(0.25, 0.4, 0.1, 1.0),
+                        dirtColor: new Cesium.Color(0.1, 0.1, 0.1, 1.0),
+                        patchiness: 1.5
+                    },
+                    source: shaderGrass
+                }
+            })
+        });
+
+        const myPrimitive1 = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: geometry
+            }),
+            appearance: materialAppearance
+        })
+
+        viewer.scene.primitives.add(myPrimitive1);
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(102.7469, 30.2048, 20000000),
+            duration: 0
+        })
+
+    </script>
+    </div>
+</body>
+
+</html>

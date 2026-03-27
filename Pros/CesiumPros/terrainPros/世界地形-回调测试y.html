@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+        const viewer = new Cesium.Viewer('cesiumContainer');  
+
+        const terrain = Cesium.Terrain.fromWorldTerrain();
+        viewer.scene.setTerrain(terrain);
+
+        // terrain.readyEvent.addEventListener(()=>{
+        //     console.log("AAA")
+        // })
+
+        // function onPostRender(event) {
+        //         console.log("Scene has been rendered", event);
+        //         viewer.scene.postRender.removeEventListener(onPostRender);
+        // }
+
+        // viewer.scene.postRender.addEventListener(onPostRender);
+       
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(103, 30, 50000),
+            duration: 0
+        })
+
+    </script>
+    </div>
+</body>
+
+</html>

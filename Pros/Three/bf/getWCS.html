@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .three_res {
+            position: absolute;
+            top: 20px;
+            right: 100px;
+            display: flex;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .three_container {
+            position: relative;
+            margin-left: 20px;
+            width: 400px;
+            height: 400px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .close_con_btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+
+
+        .query-res-table {
+            position: absolute;
+            top: 240px;
+            left: 300px;
+            background-color: #005a7b8a;
+            z-index: 450;
+        }
+
+        #query-res-header {
+            padding: 2px;
+            height: 25px;
+            cursor: move;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+
+    <div class="three_res">
+        <div class="three_container" id="treeCon1">
+            <span>DEM_YA_FABDEM</span>
+            <button class="close_con_btn" id="clo_con1">X</button>
+        </div>
+    </div>
+
+    <script>
+        var bridgeList = []
+        var qlIconUrl = "/Public/imgs/bridge.png";
+        var icon = new T.Icon({
+            iconUrl: qlIconUrl, //请求图标图片的URL
+            iconSize: new T.Point(15, 15), //图标可视区域的大小。
+            iconAnchor: new T.Point(7.5, 7.5), //图标的定位锚点
+        });
+        $.get('http://localhost:8080/localGEO/getYABridge').then(res => {
+            res.forEach(b => {
+                const b_jd = parseFloat(b.geometry.split(' ')[0].split('(')[1]).toFixed(5)
+                const b_wd = parseFloat(b.geometry.split(' ')[1].replace(')', '')).toFixed(5)
+                bridgeList.push([b_jd, b_wd, b.bridgeName])
+                var bridge_pos_tdt = new T.LngLat(b_jd, b_wd);
+                var marker = new T.Marker(bridge_pos_tdt, {
+                    icon: icon,
+                });
+                map.addOverLay(marker);
+            })
+        })
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DEM/wms?REQUEST=GetCapabilities', 'DEM_YA_FABDEM')//DEM范围框
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DOM/wms?REQUEST=GetCapabilities', 'ya')//DOM范围框
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera.position.set(1, 0, 3);
+
+        const scene1 = createSceneWithCamera($('#treeCon1'), camera);
+        $('#getDem').on('click', HD1)
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                if (x_range >= 0.08 || y_range >= 0.08) {
+                    layer.alert('框选范围过大！请重新选择范围');
+                    recTool.clear();
+                    return;
+                }
+                var loadIndex = layer.msg('数据加载中', {
+                    icon: 16,
+                    shade: 0.01,
+                    time: false
+                });
+
+
+
+                var [dom_ya_URL, x_range, y_range] = createDOMUrl('http://localhost:8080/geoserver/WMS_DOM/wms?', e)
+
+                var FABDEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_YA_FABDEM', e)
+                const textureLoader4 = new THREE.TextureLoader();
+                textureLoader4.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene1, 'mesh_n_arrow')
+                        deleteMesh(scene1, 'mesh_fab')
+
+                        fetch(FABDEM_WCS_UR).then(res => {
+                            return createDEMMesh(res, camera, 'mesh_fab')
+                        }).then((mesh,res) => {
+                            scene1.add(mesh)
+                            addTextMesh(scene1, mesh, 'N')//传入mesh_dem以计算面范围
+                            const bbox_dem = new THREE.Box3().setFromObject(mesh);
+                            const dem_width = bbox_dem.max.x - bbox_dem.min.x
+                            const dem_height = bbox_dem.max.z - bbox_dem.min.z
+                            bridgeList.forEach(b => {
+                                const b_pos_tdt = new T.LngLat(b[0], b[1])
+                                if (e.currentBounds.contains(b_pos_tdt)) {
+                                    const minX = e.currentBounds.getSouthWest().getLng()
+                                    const minY = e.currentBounds.getSouthWest().getLat()
+                                    const maxX = e.currentBounds.getNorthEast().getLng()
+                                    const maxY = e.currentBounds.getNorthEast().getLat()
+                                    const three_pos_x = (b[0] - minX) *dem_width / (maxX - minX)
+                                    const three_pos_z = (b[1] - minY) *dem_height  / (maxY - minY)
+                                    const three_pos_x_trans = three_pos_x - (dem_width / 2)
+                                    const three_pos_z_trans = (dem_height / 2) - three_pos_z
+                                    const t_geo = createTestGeometry()
+                                    t_geo.position.copy(new THREE.Vector3(three_pos_x_trans, 0, three_pos_z_trans))
+                                    scene1.add(t_geo)
+                                }
+                            })
+
+
+
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon1').css('visibility', 'visible')
+                        })
+                    },
+                )
+            })
+        }
+
+        $('#clo_con1').on('click', function () {
+            var ex_mesh = getMeshByName(scene1, 'mesh_cop')
+            if (ex_mesh) {
+                scene1.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon1').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+
+    </script>
+</body>
+
+</html>

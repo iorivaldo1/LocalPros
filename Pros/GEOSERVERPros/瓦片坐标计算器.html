@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>瓦片坐标计算器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        header {
+            text-align: center;
+            padding: 20px;
+            background: #2c3e50;
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            margin-bottom: 10px;
+        }
+        
+        .main-content {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .input-section, .calculation-steps, .visualization {
+            flex: 1;
+            min-width: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #2980b9;
+        }
+        
+        .step {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            border-radius: 4px;
+        }
+        
+        .step h3 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e8f4fc;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .result h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+        
+        .result-values {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .result-item {
+            background: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            min-width: 120px;
+        }
+        
+        .tile-grid {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+        
+        .tile-row {
+            display: flex;
+        }
+        
+        .tile {
+            width: 60px;
+            height: 60px;
+            border: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #e8f4fc;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .current-tile {
+            background: #3498db;
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(52, 152, 219, 0.7);
+            z-index: 10;
+        }
+        
+        .pixel-marker {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #e74c3c;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>瓦片坐标计算器</h1>
+            <p>将经纬度转换为瓦片坐标和像素位置</p>
+        </header>
+        
+        <div class="main-content">
+            <div class="input-section">
+                <h2>输入参数</h2>
+                <div class="input-group">
+                    <label for="longitude">经度 (Longitude)</label>
+                    <input type="number" id="longitude" value="102" step="0.0001">
+                </div>
+                <div class="input-group">
+                    <label for="latitude">纬度 (Latitude)</label>
+                    <input type="number" id="latitude" value="30" step="0.0001">
+                </div>
+                <div class="input-group">
+                    <label for="zoom">缩放级别 (Zoom Level)</label>
+                    <input type="number" id="zoom" value="0" min="0" max="20">
+                </div>
+                <button id="calculate-btn">计算坐标</button>
+                
+                <div class="result">
+                    <h2>计算结果</h2>
+                    <div class="result-values">
+                        <div class="result-item">
+                            <div>瓦片 X</div>
+                            <div id="tile-x">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div>瓦片 Y</div>
+                            <div id="tile-y">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div>像素 X</div>
+                            <div id="pixel-x">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div>像素 Y</div>
+                            <div id="pixel-y">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="calculation-steps">
+                <h2>计算步骤详解</h2>
+                <div class="step">
+                    <h3>1. 将经纬度转换为Web墨卡托坐标</h3>
+                    <p>Web墨卡托投影（EPSG:3857）是将地球表面投影到平面上的方法。</p>
+                    <p>mercX = lon * 20037508.34 / 180</p>
+                    <p>mercY = log(tan((90 + lat) * π / 360)) * (20037508.34 / 180)</p>
+                    <p id="merc-result">计算结果: -</p>
+                </div>
+                
+                <div class="step">
+                    <h3>2. 计算初始参数</h3>
+                    <p>地球周长 = 2 * π * 6378137 ≈ 40075016.68 meters</p>
+                    <p>初始分辨率 = 地球周长 / 瓦片大小(256)</p>
+                    <p>原点偏移 = 地球周长 / 2</p>
+                    <p>当前分辨率 = 初始分辨率 / 2<sup>zoom</sup></p>
+                    <p id="params-result">计算结果: -</p>
+                </div>
+                
+                <div class="step">
+                    <h3>3. 计算全局像素坐标</h3>
+                    <p>像素坐标原点在左上角，X向右增加，Y向下增加</p>
+                    <p>pixelX = (mercX + originShift) / resolution</p>
+                    <p>pixelY = (originShift - mercY) / resolution</p>
+                    <p id="pixel-result">计算结果: -</p>
+                </div>
+                
+                <div class="step">
+                    <h3>4. 计算瓦片坐标</h3>
+                    <p>瓦片坐标基于像素坐标除以瓦片大小(256)</p>
+                    <p>tileX = floor(pixelX / tileSize)</p>
+                    <p>tileY = floor(pixelY / tileSize)</p>
+                    <p id="tile-result">计算结果: -</p>
+                </div>
+                
+                <div class="step">
+                    <h3>5. 计算瓦片内的像素坐标</h3>
+                    <p>i = floor(pixelX % tileSize) [X方向正常]</p>
+                    <p>j = floor(tileSize - (pixelY % tileSize) - 1) [Y方向翻转]</p>
+                    <p id="pixel-in-tile-result">计算结果: -</p>
+                </div>
+            </div>
+            
+            <div class="visualization">
+                <h2>瓦片坐标可视化</h2>
+                <p>当前缩放级别: <span id="current-zoom">10</span></p>
+                <p>当前瓦片: <span id="current-tile">X: -, Y: -</span></p>
+                <p>瓦片内像素位置: <span id="current-pixel">X: -, Y: -</span></p>
+                
+                <div class="tile-grid" id="tile-grid">
+                    <!-- 瓦片网格将通过JavaScript生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const calculateBtn = document.getElementById('calculate-btn');
+            calculateBtn.addEventListener('click', calculate);
+            
+            // 初始计算一次
+            calculate();
+            
+            function calculate() {
+                const lon = parseFloat(document.getElementById('longitude').value);
+                const lat = parseFloat(document.getElementById('latitude').value);
+                const zoom = parseInt(document.getElementById('zoom').value);
+                
+                const result = calculatePixelInTileCorrected(lon, lat, zoom);
+                
+                // 更新结果显示
+                document.getElementById('tile-x').textContent = result.tileX;
+                document.getElementById('tile-y').textContent = result.tileY;
+                document.getElementById('pixel-x').textContent = result.i;
+                document.getElementById('pixel-y').textContent = result.j;
+                
+                // 更新步骤详解
+                document.getElementById('merc-result').textContent = 
+                    `计算结果: mercX = ${result.mercX.toFixed(2)}, mercY = ${result.mercY.toFixed(2)}`;
+                
+                document.getElementById('params-result').textContent = 
+                    `计算结果: 分辨率 = ${result.resolution.toFixed(2)}, 原点偏移 = ${result.originShift.toFixed(2)}`;
+                
+                document.getElementById('pixel-result').textContent = 
+                    `计算结果: pixelX = ${result.globalPixelX.toFixed(2)}, pixelY = ${result.globalPixelY.toFixed(2)}`;
+                
+                document.getElementById('tile-result').textContent = 
+                    `计算结果: tileX = ${result.tileX}, tileY = ${result.tileY}`;
+                
+                document.getElementById('pixel-in-tile-result').textContent = 
+                    `计算结果: i = ${result.i}, j = ${result.j}`;
+                
+                // 更新可视化
+                updateVisualization(result.tileX, result.tileY, result.i, result.j, zoom);
+            }
+            
+            function calculatePixelInTileCorrected(lon, lat, zoom) {
+                const tileSize = 256;
+                
+                // 1. 将经纬度转换为Web墨卡托坐标
+                function lon2mercX(lon) {
+                    return lon * 20037508.34 / 180;
+                }
+                
+                function lat2mercY(lat) {
+                    const y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
+                    return y * 20037508.34 / 180;
+                }
+                
+                const mercX = lon2mercX(lon);
+                const mercY = lat2mercY(lat);
+                
+                // 2. 计算初始参数
+                const earthCircumference = 2 * Math.PI * 6378137;
+                const initialResolution = earthCircumference / tileSize;
+                const originShift = earthCircumference / 2;
+                const resolution = initialResolution / Math.pow(2, zoom);
+                
+                // 3. 计算像素坐标（全局像素坐标系，原点在左上角）
+                const pixelX = (mercX + originShift) / resolution;
+                const pixelY = (originShift - mercY) / resolution; // 关键修正：Y轴翻转
+                
+                // 4. 计算瓦片坐标
+                const tileX = Math.floor(pixelX / tileSize);
+                const tileY = Math.floor(pixelY / tileSize);
+                
+                // 5. 计算瓦片内的像素坐标（I, J）
+                const i = Math.floor(pixelX % tileSize); // X方向正常
+                const j = Math.floor(tileSize - (pixelY % tileSize) - 1); // 关键修正：Y方向翻转
+
+                return {
+                    tileX: tileX,
+                    tileY: tileY,
+                    i: i,
+                    j: j,
+                    globalPixelX: pixelX,
+                    globalPixelY: pixelY,
+                    mercX: mercX,
+                    mercY: mercY,
+                    resolution: resolution,
+                    originShift: originShift
+                };
+            }
+            
+            function updateVisualization(tileX, tileY, pixelX, pixelY, zoom) {
+                const tileGrid = document.getElementById('tile-grid');
+                tileGrid.innerHTML = '';
+                
+                document.getElementById('current-zoom').textContent = zoom;
+                document.getElementById('current-tile').textContent = `X: ${tileX}, Y: ${tileY}`;
+                document.getElementById('current-pixel').textContent = `X: ${pixelX}, Y: ${pixelY}`;
+                
+                // 创建3x3的瓦片网格，当前瓦片在中心
+                const container = document.createElement('div');
+                container.style.position = 'relative';
+                
+                for (let y = -1; y <= 1; y++) {
+                    const row = document.createElement('div');
+                    row.className = 'tile-row';
+                    
+                    for (let x = -1; x <= 1; x++) {
+                        const tile = document.createElement('div');
+                        tile.className = 'tile';
+                        tile.textContent = `${tileX + x}\n${tileY + y}`;
+                        
+                        if (x === 0 && y === 0) {
+                            tile.classList.add('current-tile');
+                            
+                            // 添加像素标记
+                            const marker = document.createElement('div');
+                            marker.className = 'pixel-marker';
+                            marker.style.left = `${(pixelX / 256) * 100}%`;
+                            marker.style.top = `${(pixelY / 256) * 100}%`;
+                            tile.appendChild(marker);
+                        }
+                        
+                        row.appendChild(tile);
+                    }
+                    
+                    container.appendChild(row);
+                }
+                
+                tileGrid.appendChild(container);
+            }
+        });
+    </script>
+</body>
+</html>

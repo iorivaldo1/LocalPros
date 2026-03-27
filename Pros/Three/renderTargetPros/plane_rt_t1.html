@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 5, 3);
+        camera.lookAt(0, 0, 0);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 帧缓存系统 - 使用更安全的方法
+        const textureSize = 256;
+        
+        let bufferA = {
+            position: new THREE.WebGLRenderTarget(textureSize, textureSize, {
+                minFilter: THREE.NearestFilter,
+                magFilter: THREE.NearestFilter,
+                format: THREE.RGBAFormat,
+                type: THREE.FloatType,
+                depthBuffer: false,
+                stencilBuffer: false
+            }),
+        };
+
+        let bufferB = {
+            position: bufferA.position.clone(),
+        };
+
+        let readBuffer = bufferA;
+        let writeBuffer = bufferB;
+
+
+        // 用于渲染到纹理的辅助场景和相机
+        const bufferScene = new THREE.Scene();
+        const bufferCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+
+
+        // 着色器材质：计算球体位置
+        const ballPositionMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec2 vUv;
+                
+                void main() {
+                    // 简单的时间驱动球体位置
+                    float speed = 1.0;
+                    float radius = 2.0;
+                    
+                    // 只在纹理中心存储位置
+                    if (vUv.x > 0.495 && vUv.x < 0.505 && 
+                        vUv.y > 0.495 && vUv.y < 0.505) {
+                        
+                        float x = cos(uTime) * radius;
+                        float z = sin(uTime * 0.7) * radius;
+                        gl_FragColor = vec4(x, z, 0.0, 1.0);
+                    } else {
+                        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                    }
+                }
+    `
+        });
+
+        // 初始化帧缓存
+        function initializeBuffers() {
+            console.log('初始化帧缓存...');
+
+            // 清除所有缓冲区为黑色
+            renderer.setClearColor(0x000000, 1);
+
+            // 清除bufferA
+            renderer.setRenderTarget(bufferA.position);
+            renderer.clear();
+
+            // 清除bufferB
+            renderer.setRenderTarget(bufferB.position);
+            renderer.clear();
+
+            renderer.setRenderTarget(null);
+            renderer.setClearColor(0x1a1a2e, 1);
+
+            // 初始化球体位置
+            const initMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff
+            });
+
+            quad.material = initMaterial;
+            bufferScene.add(quad);
+
+            // 在bufferA的位置纹理中心绘制一个点
+            const positionInitMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uInitPos: { value: new THREE.Vector4(0, 0, 0, 1) }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec4 uInitPos;
+                    varying vec2 vUv;
+                    void main() {
+                        if (vUv.x > 0.495 && vUv.x < 0.505 && 
+                            vUv.y > 0.495 && vUv.y < 0.505) {
+                            gl_FragColor = uInitPos;
+                        } else {
+                            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                        }
+                    }
+        `
+            });
+
+            quad.material = positionInitMaterial;
+            renderer.setRenderTarget(bufferA.position);
+            renderer.render(bufferScene, bufferCamera);
+
+            renderer.setRenderTarget(bufferB.position);
+            renderer.render(bufferScene, bufferCamera);
+
+            bufferScene.remove(quad);
+            positionInitMaterial.dispose();
+            initMaterial.dispose();
+
+            console.log('帧缓存初始化完成');
+        }
+
+        // 安全地交换缓冲区
+        function swapBuffers() {
+            // 交换缓冲区引用
+            if (readBuffer === bufferA) {
+                readBuffer = bufferB;
+                writeBuffer = bufferA;
+            } else {
+                readBuffer = bufferA;
+                writeBuffer = bufferB;
+            }
+
+            // 解除所有材质中的纹理绑定
+            ballPositionMaterial.uniformsNeedUpdate = true;
+
+            // 强制WebGL上下文刷新状态
+            renderer.resetState();
+        }
+
+
+        // 创建可视化球体
+        const ballGeometry = new THREE.SphereGeometry(0.15, 32, 32);
+        const ballMaterial = new THREE.MeshPhongMaterial({
+            color: '#ff5555',
+            shininess: 100
+        });
+        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+        ball.position.y = 0.15;
+        scene.add(ball);
+
+        // 添加网格辅助
+        const gridHelper = new THREE.GridHelper(5, 10, 0x888888, 0x444444);
+        gridHelper.position.y = -0.01;
+        scene.add(gridHelper);
+
+
+        // 初始化
+        initializeBuffers();
+
+        // 创建一个简单的HTML元素显示球体位置
+        const infoDiv = document.createElement('div');
+        infoDiv.style.cssText = `
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+        `;
+        document.body.appendChild(infoDiv);
+
+
+        // 更新函数
+        let lastSwapTime = 0;
+
+        function update(time) {
+            const currentTime = time * 0.001;
+
+            // 计算球体位置
+            const speed = 1.0;
+            const radius = 2.0;
+            const ballX = Math.cos(currentTime * speed) * radius;
+            const ballZ = Math.sin(currentTime * speed * 0.7) * radius;
+
+            // 更新球体位置
+            ball.position.x = ballX;
+            ball.position.z = ballZ;
+            ball.position.y = 0.15 + Math.sin(currentTime * 2) * 0.05;
+
+
+
+            // 步骤1: 更新球体位置到写入缓冲区
+            ballPositionMaterial.uniforms.uTime.value = currentTime;
+            quad.material = ballPositionMaterial;
+            bufferScene.add(quad);
+
+            renderer.setRenderTarget(writeBuffer.position);
+            renderer.render(bufferScene, bufferCamera);
+
+            // 确保在绘制轨迹前解绑所有纹理
+            renderer.setRenderTarget(null);
+            renderer.resetState();
+
+
+            // 步骤2: 绘制轨迹到写入缓冲区（使用读取缓冲区的数据）
+            renderer.render(bufferScene, bufferCamera);
+
+            bufferScene.remove(quad);
+
+            // 步骤3: 交换缓冲区
+            swapBuffers();
+
+            // 更新信息显示
+            infoDiv.innerHTML = `
+                球体轨迹模拟<br>
+                位置: (${ballX.toFixed(2)}, ${ballZ.toFixed(2)})<br>
+                缓冲区: ${readBuffer === bufferA ? 'A' : 'B'}
+            `;
+
+
+        }
+
+
+        // 动画循环
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            // 更新逻辑
+            update(time);
+
+            // 渲染场景
+            renderer.render(scene, camera);
+            controls.update();
+        }
+
+        // 启动动画
+        animate(0);
+
+
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+
+        // 添加点击交互：点击时在点击位置添加一个临时轨迹
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('click', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(plane);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+
+                // 临时在点击位置显示一个标记
+                const markerGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+                const markerMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+                marker.position.copy(point);
+                marker.position.y = 0.1;
+                scene.add(marker);
+
+                // 3秒后移除标记
+                setTimeout(() => {
+                    scene.remove(marker);
+                    markerGeometry.dispose();
+                    markerMaterial.dispose();
+                }, 3000);
+            }
+        });  
+    </script>
+</body>
+
+</html>

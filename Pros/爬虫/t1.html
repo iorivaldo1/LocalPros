@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+
+<head>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/jsencrypt.min.js"></script>
+</head>
+
+<body>
+    <button id="t1">t</button>
+    <script>
+        $('#t1').click(() => {
+            const encrypt = new JSEncrypt();
+            console.log(encrypt)
+            var pk = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDCdXBuavrjWmavuujlFQFqXIaPJKkkptqsgIuzkACAGInPEhIK+CZuNoDBlJN7DMyWvZuKGBz4XpqVmkEb9jWQGZRfu+ZzSxxkLiMf46t7veohXRSNsMORzKzohshYwfN5LOCCOyCi7CvFaJw9z1VwUi+aPW0KWiRcNHguvPxL8wIDAQAB";
+            encrypt.setPublicKey('-----BEGIN PUBLIC KEY-----' + pk + '-----END PUBLIC KEY-----');
+            var res = encrypt.encrypt('enyq@2025')
+            return res
+        }).then(res=>{
+            $.post('http://39.107.180.192:8081/hzzService/api/common/login',{
+                
+            })
+        })
+    </script>
+</body>

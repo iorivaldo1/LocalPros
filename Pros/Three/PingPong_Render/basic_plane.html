@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 5, 3);
+        camera.lookAt(0, 0, 0); // 添加这行确保相机看向原点
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        //-----------------------------------
+        // 主场景的平面
+        const plane_geometry = new THREE.PlaneGeometry(5, 5, 50, 50);
+        const material = new THREE.MeshPhongMaterial({
+            color: '#6a5d31',
+            side: THREE.DoubleSide,
+            wireframe: true
+        });
+        const plane = new THREE.Mesh(plane_geometry, material);
+        plane.rotateX(- Math.PI / 2);
+        scene.add(plane);
+
+        //-----------------------------------
+        // 渲染到纹理的场景
+        const bufferScene = new THREE.Scene();
+        const bufferTexture = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+
+        const bufferCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        bufferCamera.position.set(0, 5, 0);
+        bufferCamera.lookAt(0, 0, 0); // 添加这行确保相机看向原点
+
+        // 为fboPlane创建可见的材质
+        const fboGeometry = new THREE.PlaneGeometry(2, 2); // 增大尺寸以便看到
+        const fboMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff0000, // 改为红色以便明显看到
+            side: THREE.DoubleSide
+        });
+
+        const fboPlane = new THREE.Mesh(fboGeometry, fboMaterial);
+        fboPlane.rotateX(- Math.PI / 2);
+        bufferScene.add(fboPlane);
+
+        //-----------------------------------
+        // 动画循环
+        const textureMaterial = new THREE.MeshBasicMaterial({
+            map: bufferTexture.texture // 使用渲染目标纹理
+        });
+
+        const displayPlane = new THREE.PlaneGeometry(2, 2);
+        const textureDisplay = new THREE.Mesh(displayPlane, textureMaterial);
+        textureDisplay.rotateX(- Math.PI / 2);
+        scene.add(textureDisplay);
+
+        // 在动画循环中渲染到纹理
+        function render() {
+            requestAnimationFrame(render);
+            // fboPlane.rotation.z += 0.01;
+            renderer.setRenderTarget(bufferTexture);
+            renderer.render(bufferScene, bufferCamera);
+            renderer.setRenderTarget(null);
+
+            renderer.render(scene, camera);
+            controls.update();
+        }
+
+        render();
+    </script>
+</body>
+
+</html>

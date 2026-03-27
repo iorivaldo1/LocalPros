@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        #fileInput {
+            position: absolute;
+            top: 50px;
+            right: 100px;
+            background-color: white;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <input type="file" id="fileInput" accept=".tif,.tiff">
+    <script>
+        $('#fileInput').on('change', HD1)
+
+        async function getEleByCoord(demFile, lng, lat) {
+            const arrayBuffer = await demFile.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+
+            const width = image.getWidth();
+            const height = image.getHeight();
+            const bbox = image.getBoundingBox();
+
+            //计算左上角地理坐标
+            const geoX = bbox[0]
+            const geoY = bbox[3]
+            //计算像元大小
+            const pixelSizeX = (bbox[2] - bbox[0]) / width;
+            const pixelSizeY = (bbox[3] - bbox[1]) / height;
+            // 计算像素坐标
+            const col = Math.floor((lng - geoX) / pixelSizeX);
+            const row = Math.floor((geoY - lat) / pixelSizeY); // Y轴反向
+            const cnIndex = row * width + col
+            console.log(rasters[0][cnIndex])
+        }
+        function HD1() {
+            const file = event.target.files[0]
+            getEleByCoord(file, 99.399903, 30.305379)
+        }
+
+
+    </script>
+</body>
+
+</html>

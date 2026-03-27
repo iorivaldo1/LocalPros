@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/exif.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/f3d.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .v_header {
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #test {
+            position: absolute;
+            bottom: 100px;
+            left: 70px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #sh_riv_polyline {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_mesh_grid {
+            position: absolute;
+            top: 85px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_bridge_sphere_label {
+            position: absolute;
+            top: 120px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_click_query {
+            position: absolute;
+            top: 155px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_click_ring {
+            position: absolute;
+            top: 190px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_vec_tile {
+            position: absolute;
+            top: 225px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+
+        #clo_con1 {
+            right: 10px;
+        }
+
+        #reloadScene1 {
+            right: 40px;
+        }
+
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-select" id="map"></div>
+    <button class="no-select" id="getDem">T</button>
+    <!-- <button id="test">T2</button> -->
+    <div class="no-select" id="coordSwitchButton">
+        <span>显示坐标</span>
+        <button class="switch">
+            <span class="switch_circle circle_left"></span>
+        </button>
+    </div>
+
+    <div id="coordInfoContainer">
+        <span id="coord"></span>
+    </div>
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+        <div class="sh_ctr_group">
+            <div class="sw_container no-select" id="sh_riv_polyline">
+                <span>河流</span>
+                <button class="switch switch_active">
+                    <span class="switch_circle circle_right"></span>
+                </button>
+            </div>
+
+            <div class="sw_container no-select" id="sh_mesh_grid">
+                <span>网格</span>
+                <button class="switch switch_active">
+                    <span class="switch_circle circle_right"></span>
+                </button>
+            </div>
+
+            <div class="sw_container no-select" id="sh_bridge_sphere_label">
+                <span>桥梁</span>
+                <button class="switch switch_active">
+                    <span class="switch_circle circle_right"></span>
+                </button>
+            </div>
+
+            <div class="sw_container no-select" id="sh_click_query">
+                <span>坐标查询</span>
+                <button class="switch">
+                    <span class="switch_circle circle_left"></span>
+                </button>
+            </div>
+
+            <div class="sw_container no-select" id="sh_click_ring">
+                <span>扩散查询</span>
+                <button class="switch">
+                    <span class="switch_circle circle_left"></span>
+                </button>
+            </div>
+
+            <div class="sw_container_false no-select" id="sh_vec_tile">
+                <span>矢量地图</span>
+                <button class="switch">
+                    <span class="switch_circle circle_left"></span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+    <script>
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        var map = new T.Map('map');
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(102.809,30.118), 15);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        let showFlag = {};
+        showFlag.sh_riv_polyline = true;
+        showFlag.sh_mesh_grid = true;
+        showFlag.sh_bridge_sphere_label = true;
+        showFlag.sh_vec_tile = false;
+        showFlag.sh_click_query = false;
+        showFlag.sh_click_ring = false;
+
+        //geo-桥梁点列表
+        let bridge_list = []
+        //tdt中:点击点、bbox内的河流line,
+        let geo_marker_list = []
+        //tdt中：tile网格线
+        let demOverLayerList = []
+
+        let dem_mesh_material_img = new THREE.MeshBasicMaterial()
+        let dem_mesh_material_vec = new THREE.MeshBasicMaterial()
+
+        //加载ya河流
+        let river_list = []
+        $.get('http://8.155.1.150:8080/getLocalGEO/getYARiver').then(res => {
+            res.forEach(riv => {
+                const coord_json = JSON.parse(riv.geometry).coordinates
+                const riv_name = riv.name
+                var points = []
+                coord_json.forEach(p => {
+                    points.push(new T.LngLat(p[0], p[1]))
+                })
+                var line = new T.Polyline(points, {
+                    color: 'red',
+                    weight: 0.8,
+                    opacity: 0.8,
+                    lineStyle: "dash",
+                });
+                map.addOverLay(line);
+                river_list.push([line, riv_name])
+            })
+        })
+
+        //设置dem范围
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')
+
+        //测试用--加入yaBridge
+        test_add_ya_bridge_point(bridge_list)
+
+        //显示坐标功能
+        regShowCoord(map);
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        $('#getDem').on('click', HD1)
+        async function HD1() {
+
+
+            //不能使用map.clearOverLays()--因为map中的空间要素(河流、桥梁等)不要被清除
+            clearOverLays()
+
+            //interact组件设置窗口拉伸缩放
+            init3DViewDragResize('Window_3D')
+
+            //避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+            //拉框工具
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            let bbox_geo = await getBbox()
+            //选择框过大时，退出
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            } else if (x_range <= 0.0003 || y_range <= 0.0003) {
+                layer.alert('框选范围过小！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+            //数据加载进度框
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]),//左下
+                new T.LngLat(bounds[2], bounds[3]) //右上
+            )
+            //构造扩大范围矩形
+            const geo_rectangle = []
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng()
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat()
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng()
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat()
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny))
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            })
+            map.addOverLay(rect)
+            demOverLayerList.push(rect)
+            recTool.clear()
+            //dem数据
+            const demData = await fetch(DEMUrl)
+            const demDataClone = demData.clone()
+            //demData.clone()只能读取一次，使用demDataClone.arrayBuffer()可以多次读取
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+
+            //------------------------------------二维--------------------------------------
+            //1.生成geo_bbox内的河流点集
+            const river_ins_list = await cal_riv_intersects(river_list, bbox_geo_expand)
+
+            //------------------------------------三维--------------------------------------
+            //清除scene中已有three对象,清除mesh内存
+            const old_dem_mesh = scene1.getObjectByName('mesh_dem')
+            const old_seg_lines = scene1.getObjectByName('seg_line')
+            if (old_dem_mesh) {
+                old_dem_mesh.geometry.dispose();
+                old_dem_mesh.material.dispose();
+                old_seg_lines.geometry.dispose();
+                old_seg_lines.material.dispose();
+                dem_mesh_material_img.dispose()
+                dem_mesh_material_vec.dispose()
+            }
+            scene1.children.length = 0;
+            //dem生成mesh
+            const [mesh_dem, minEle, maxEle, geometry] = await c_mesh_dem(demDataArrayBuffer, camera1, 'mesh_dem')
+            scene1.add(mesh_dem)
+            //生成mesh每一条边,并注记
+            const seg_lines = await createLineSegmentsWithIndexLabels(mesh_dem);
+            seg_lines.rotation.x = -Math.PI / 2;
+            scene1.add(seg_lines)
+            //计算dem的bbox
+            const box3 = new THREE.Box3().setFromObject(mesh_dem);
+            //河流
+            const textureLoader = new THREE.TextureLoader();
+            const colorTexture = textureLoader.load('/Public/imgs/spriteLine2.png');
+            const river_line_material = new THREE.ShaderMaterial({
+                uniforms: {
+                    // 定义一个颜色uniform
+                    colorTexture: { value: colorTexture },
+                    time: { value: 0 }
+                },
+                vertexShader: testLineVS2,
+                fragmentShader: testLineFS2,
+            });
+            const riv_group = await c_polyline_riv_animate(scene1, mesh_dem, box3, river_ins_list, bbox_geo_expand, river_line_material)
+
+            //桥梁点
+            const brdige_lable_line_material = await c_bridge(scene1, mesh_dem, bridge_list, bbox_geo_expand)
+
+            //纹理1
+            const img_cia_tiles = await c_dom_img_cia_lv(bbox_geo_expand, 18)
+            textureLoader.load(img_cia_tiles.toDataURL('image/png'), function (res) {
+                dem_mesh_material_img.map = res
+                dem_mesh_material_img.side = THREE.DoubleSide
+                dem_mesh_material_img.needsUpdate = true
+            })
+            mesh_dem.material = dem_mesh_material_img
+            //纹理2
+            // const vec_tiles = await c_dom_vec_lv(bbox_geo_expand, 18)
+            const vec_cva_tiles = await c_dom_vec_cva_lv(bbox_geo_expand, 18)
+            textureLoader.load(vec_cva_tiles.toDataURL('image/png'), function (res) {
+                dem_mesh_material_vec.map = res
+                dem_mesh_material_vec.side = THREE.DoubleSide
+                dem_mesh_material_vec.needsUpdate = true
+            })
+            //注册纹理切换功能
+            regSHThreeVec(showFlag, 'sh_vec_tile', dem_mesh_material_img, dem_mesh_material_vec, mesh_dem)
+
+            //避免出现白模，initThreeView异步最后让其显示
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+                $('#' + 'Window_3D').css('visibility', 'visible')
+                $('.sh_ctr_group').show()
+                resolve();
+            })
+            
+            //注册点击查询功能
+            const [click_query_label_line_material, click_ring_material] = await initThreeClick(rect, map, scene1, renderer1, camera1,
+                mesh_dem, bbox_geo_expand, geo_marker_list, minEle, maxEle)
+
+            //显示河流功能
+            regSHThreeFeature(showFlag, 'sh_riv_polyline', 'river_group');
+            //显示网格线功能
+            regSHThreeFeature(showFlag, 'sh_mesh_grid', 'seg_group');
+            //显示桥梁
+            regSHThreeFeature(showFlag, 'sh_bridge_sphere_label', 'bridge_group')
+            //显示坐标查询
+            regSHClickQuery(showFlag, 'sh_click_query', 'three_click_query_group',geo_marker_list)
+            //注册扩散查询
+            regSHClickRing(showFlag, 'sh_click_ring', 'three_click_ring_group',geo_marker_list)
+            function animate() {
+                requestAnimationFrame(animate);
+                if (brdige_lable_line_material) {
+                    brdige_lable_line_material.uniforms.time.value += 0.001
+                }
+                click_query_label_line_material.uniforms.time.value += 0.001;
+                river_line_material.uniforms.time.value += 0.001;
+                click_ring_material.uniforms.time.value += 0.001;
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+
+            //每次拉框后重置各个按钮状态
+            $('.sw_container').css('visibility', 'visible');
+        }
+
+        $('#clo_con1').on('click', function () {
+            clearOverLays()
+
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 6.5);
+        })
+
+        $('#test').on('click', function () {
+
+
+        })
+
+
+    </script>
+</body>
+
+</html>

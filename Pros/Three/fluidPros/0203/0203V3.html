@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="./s2.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+        
+        .v_header {
+            user-select: none;
+            cursor: move;
+            padding: 5px;
+            background-color: rgba(100, 110, 120, 0.5);
+            height: 30px;
+            line-height: 30px;
+        }
+        
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+        
+        #clo_con1 {
+            right: 10px;
+        }
+        
+        #reloadScene1 {
+            right: 40px;
+        }
+        
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 0px;
+        }
+        
+        /* 参数控制面板样式 */
+        .param_panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 320px;
+            max-height:680px;
+            background-color: rgba(30, 35, 45, 0.92);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 460;
+            visibility: hidden;
+            overflow-y: auto;
+        }
+        
+        .param_header {
+            user-select: none;
+            cursor: move;
+            padding: 12px 15px;
+            background: linear-gradient(135deg, rgba(52, 73, 94, 0.9), rgba(44, 62, 80, 0.9));
+            border-radius: 8px 8px 0 0;
+            color: #ecf0f1;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .param_close {
+            cursor: pointer;
+            color: #ecf0f1;
+            font-size: 18px;
+            font-weight: bold;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        
+        .param_close:hover {
+            opacity: 1;
+        }
+        
+        .param_content {
+            padding: 15px;
+        }
+        
+        .param_group {
+            margin-bottom: 15px;
+        }
+        
+        .param_group_title {
+            color: #3498db;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(52, 152, 219, 0.3);
+        }
+        
+        .param_item {
+            margin-bottom: 12px;
+        }
+        
+        .param_label {
+            color: #bdc3c7;
+            font-size: 12px;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .param_value {
+            color: #3498db;
+            font-weight: 600;
+        }
+        
+        .param_slider {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(189, 195, 199, 0.3);
+            outline: none;
+        }
+        
+        .param_slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .param_slider::-webkit-slider-thumb:hover {
+            background: #2980b9;
+            transform: scale(1.2);
+        }
+        
+        .param_slider::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .param_button {
+            width: 100%;
+            padding: 8px;
+            margin-top: 10px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .param_button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+        }
+        
+        .param_button:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-select" id="map"></div>
+    <button class="no-select" id="getDem">T</button>
+
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM测试 DOM测试</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+    </div>
+    
+    <!-- 参数控制面板 -->
+    <div class="param_panel" id="ParamPanel">
+        <div class="param_header">
+            <span>🌊 流体模拟参数</span>
+            <span class="param_close" id="closeParamPanel">×</span>
+        </div>
+        <div class="param_content">
+            <!-- 物理参数 -->
+            <div class="param_group">
+                <div class="param_group_title">物理参数</div>
+                
+                <div class="param_item">
+                    <div class="param_label">
+                        <span>重力加速度 (gravity)</span>
+                        <span class="param_value" id="gravityValue">15.0</span>
+                    </div>
+                    <input type="range" class="param_slider" id="gravitySlider" 
+                           min="1" max="30" step="0.5" value="15">
+                </div>
+                
+                <div class="param_item">
+                    <div class="param_label">
+                        <span>管道面积 (pipeArea)</span>
+                        <span class="param_value" id="pipeAreaValue">0.35</span>
+                    </div>
+                    <input type="range" class="param_slider" id="pipeAreaSlider" 
+                           min="0.1" max="1.0" step="0.05" value="0.35">
+                </div>
+                
+                <div class="param_item">
+                    <div class="param_label">
+                        <span>管道长度 (pipeLength)</span>
+                        <span class="param_value" id="pipeLengthValue">2.4</span>
+                    </div>
+                    <input type="range" class="param_slider" id="pipeLengthSlider" 
+                           min="0.1" max="10.0" step="0.1" value="2.4">
+                </div>
+                
+                <div class="param_item">
+                    <div class="param_label">
+                        <span>时间步长 (dt)</span>
+                        <span class="param_value" id="dtValue">0.005</span>
+                    </div>
+                    <input type="range" class="param_slider" id="dtSlider" 
+                           min="0.001" max="0.02" step="0.001" value="0.005">
+                </div>
+            </div>
+            
+            <!-- 注入参数 -->
+            <div class="param_group">
+                <div class="param_group_title">注入参数</div>
+                
+                <div class="param_item">
+                    <div class="param_label">
+                        <span>注入量 (injectAmount)</span>
+                        <span class="param_value" id="injectAmountValue">1.6</span>
+                    </div>
+                    <input type="range" class="param_slider" id="injectAmountSlider" 
+                           min="0.1" max="5.0" step="0.1" value="1.6">
+                </div>
+                
+                <!-- 注入半径已取消手动控制，由地形尺寸自动计算 -->
+            </div>
+            
+            <!-- 环境参数 -->
+            <div class="param_group">
+                <div class="param_group_title">环境参数</div>
+                
+                <div class="param_item">
+                    <div class="param_label">
+                        <span>蒸发速率 (evaporation)</span>
+                        <span class="param_value" id="evaporationValue">0.0000</span>
+                    </div>
+                    <input type="range" class="param_slider" id="evaporationSlider" 
+                           min="0" max="0.01" step="0.0001" value="0">
+                </div>
+            </div>
+            
+            <!-- 渲染参数 -->
+            <div class="param_group">
+                <div class="param_group_title">渲染参数</div>
+                
+                <div class="param_item">
+                    <div class="param_label">
+                        <span>最大水深 (maxDepth)</span>
+                        <span class="param_value" id="maxDepthValue">0.05</span>
+                    </div>
+                    <input type="range" class="param_slider" id="maxDepthSlider" 
+                           min="0.01" max="0.2" step="0.01" value="0.05">
+                </div>
+            </div>
+            
+            <button class="param_button" id="resetParams">重置默认参数</button>
+        </div>
+    </div>
+
+
+
+    <script>
+        // ==================== 工具函数 ====================
+        // 根据坐标计算瓦片行列号
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360;
+            const y = (1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2;
+            const tileCount = Math.pow(2, zoom);
+            const tileCol = Math.floor(x * tileCount);
+            const tileRow = Math.floor(y * tileCount);
+            return [tileCol, tileRow];
+        }
+
+        // 根据瓦片行列号计算坐标
+        function tileToLngLat(tileCol, tileRow, zoom) {
+            const n = Math.pow(2, zoom);
+            const lng = (tileCol / n) * 360 - 180;
+            const latRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * tileRow) / n)));
+            const lat = (latRad * 180) / Math.PI;
+            return [lng, lat];
+        }
+
+        // 获取天地图影像切片(img)
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 获取天地图影像注记(cia)
+        function getTileWMTSUrlCIA(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/cia_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 获取天地图矢量注记(cva)
+        function getTileWMTSUrlCVA(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/cva_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 获取天地图矢量底图(vec)
+        function getTileWMTSUrlVEC(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/vec_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 计算瓦片边界
+        function calculateBounds(tiles) {
+            const cols = tiles.map(t => t.col);
+            const rows = tiles.map(t => t.row);
+            return {
+                minCol: Math.min(...cols),
+                maxCol: Math.max(...cols),
+                minRow: Math.min(...rows),
+                maxRow: Math.max(...rows)
+            };
+        }
+
+        // 加载图片
+        function loadImage(url, timeout = 5000000) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                const timer = setTimeout(() => reject(new Error(`图片加载超时: ${url}`)), timeout);
+                img.onload = () => {
+                    clearTimeout(timer);
+                    resolve(img);
+                };
+                img.onerror = error => {
+                    clearTimeout(timer);
+                    reject(error);
+                };
+                img.src = url;
+            });
+        }
+
+        // 批量加载图片
+        async function getAllImages(tiles) {
+            const loadPromises = tiles.map(tile =>
+                loadImage(tile.url).catch(error => {
+                    console.error(`加载瓦片失败: ${tile.url}`, error);
+                    return null;
+                })
+            );
+            return await Promise.all(loadPromises);
+        }
+
+        // ==================== Three.js场景创建 ====================
+        function createScene(domID, camera) {
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            const container = domID;
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container[0].clientWidth, container[0].clientHeight);
+            container[0].appendChild(renderer.domElement);
+            scene.add(ambientLight);
+            scene.add(directionalLight);
+            const control = new THREE.OrbitControls(camera, renderer.domElement);
+            control.enablePan = true;
+            control.panSpeed = 1.0;
+            control.keyPanSpeed = 20.0;
+
+            return [scene, control, renderer];
+        }
+
+        // ==================== 获取绘制框边界 ====================
+        function getBbox() {
+            return new Promise((resolve, reject) => {
+                const handler = e => {
+                    const bbox = e.currentBounds;
+                    recTool.removeEventListener('draw', handler);
+                    resolve(bbox);
+                };
+                recTool.addEventListener('draw', handler);
+            });
+        }
+
+        // ==================== 获取DEM数据URL ====================
+        async function setDEMUrl(layerName, bbox) {
+            const resolution = 0.00027777778;
+            const minX = bbox.getSouthWest().lng;
+            const minY = bbox.getSouthWest().lat;
+            const maxX = bbox.getNorthEast().lng;
+            const maxY = bbox.getNorthEast().lat;
+
+            let wcsURL = 'http://localhost:8080/geoserver/wcs?service=WCS&version=2.0.1&request=GetCoverage&coverageId=' +
+                layerName + '&format=image/tiff&subset=Long(' + minX + ',' + maxX + ')&subset=Lat(' + minY + ',' + maxY + ')';
+
+            const demData = await fetch(wcsURL);
+            const arrayBuffer = await demData.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const dem_range = image.getBoundingBox();
+
+            let [dem_minX, dem_minY, dem_maxX, dem_maxY] = dem_range;
+            if (minX < dem_minX) dem_minX = dem_minX - resolution;
+            if (minY < dem_minY) dem_minY = dem_minY - resolution;
+            if (maxX > dem_maxX) dem_maxX = dem_maxX + resolution;
+            if (maxY > dem_maxY) dem_maxY = dem_maxY + resolution;
+
+            wcsURL = 'http://localhost:8080/geoserver/wcs?service=WCS&version=2.0.1&request=GetCoverage&coverageId=' +
+                layerName + '&format=image/tiff&subset=Long(' + dem_minX + ',' + dem_maxX + ')&subset=Lat(' + dem_minY + ',' + dem_maxY + ')';
+
+            return [wcsURL, [dem_minX, dem_minY, dem_maxX, dem_maxY]];
+        }
+
+        // ==================== 创建DEM网格 ====================
+        async function c_mesh_dem(demData, camera, m_meshname) {
+            const tiff = await GeoTIFF.fromArrayBuffer(demData);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const width = image.getWidth();
+            const height = image.getHeight();
+            const elevationData = new Float32Array(rasters[0]);
+            
+            const geometry = new THREE.PlaneGeometry(5, 5 * height / width, width - 1, height - 1);
+            
+            let maxElevation = -Infinity;
+            let minElevation = Infinity;
+            for (let i = 0; i < elevationData.length; i++) {
+                if (elevationData[i] > maxElevation) maxElevation = elevationData[i];
+                if (elevationData[i] !== 0 && elevationData[i] < minElevation) minElevation = elevationData[i];
+            }
+            
+            const positions = geometry.attributes.position.array;
+            for (let i = 0; i < elevationData.length; i++) {
+                if (maxElevation == minElevation) {
+                    positions[i * 3 + 2] = 0;
+                } else {
+                    // 直接使用归一化高度 [0, 1]
+                    positions[i * 3 + 2] = (elevationData[i] - minElevation) / (maxElevation - minElevation);
+                }
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.computeVertexNormals();
+
+            const mesh_dem = new THREE.Mesh(geometry);
+            mesh_dem.name = m_meshname;
+            mesh_dem.rotation.x = -Math.PI / 2;
+            camera.position.set(0, 5, 3.5);
+            return [mesh_dem, minElevation, maxElevation, geometry];
+        }
+
+        // ==================== 获取影像+注记图层 ====================
+        async function c_dom_img_cia_lv(bbox, lv) {
+            const zoom = lv;
+            const tileSize = 256;
+            const minX = bbox.getSouthWest().lng;
+            const minY = bbox.getSouthWest().lat;
+            const maxX = bbox.getNorthEast().lng;
+            const maxY = bbox.getNorthEast().lat;
+
+            const nw = lngLatToTile(minX, maxY, zoom);
+            const ne = lngLatToTile(maxX, maxY, zoom);
+            const sw = lngLatToTile(minX, minY, zoom);
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            const tiles2 = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({ url: getTileWMTSUrlIMG(col, row, zoom), col: col, row: row });
+                    tiles2.push({ url: getTileWMTSUrlCIA(col, row, zoom), col: col, row: row });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            const canvas1 = document.createElement('canvas');
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom);
+            const [lastTile_se_x, lastTile_se_y] = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+            const geo_width = lastTile_se_x - firstTile_nw_x;
+            const geo_height = lastTile_se_y - firstTile_nw_y;
+            const pixelsPerDegreeX = canvasWidth / geo_width;
+            const pixelsPerDegreeY = canvasHeight / geo_height;
+            const selectionPixelWidth = (maxX - minX) * pixelsPerDegreeX;
+            const selectionPixelHeight = (minY - maxY) * pixelsPerDegreeY;
+
+            const canvas2 = document.createElement('canvas');
+            canvas2.width = Math.ceil(selectionPixelWidth);
+            canvas2.height = Math.ceil(selectionPixelHeight);
+            const ctx2 = canvas2.getContext('2d');
+
+            const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX;
+            const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY;
+
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const images = await getAllImages(tiles);
+                    images.forEach((img, index) => {
+                        const tile = tiles[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(img, x, y, tileSize, tileSize);
+                    });
+                    const cias = await getAllImages(tiles2);
+                    cias.forEach((cia, index) => {
+                        const tile = tiles2[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(cia, x, y, tileSize, tileSize);
+                    });
+                    const imageData = ctx1.getImageData(Math.floor(offset_x), Math.floor(offset_y), canvas2.width, canvas2.height);
+                    ctx2.putImageData(imageData, 0, 0);
+                    resolve(canvas2);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // ==================== 获取矢量+注记图层 ====================
+        async function c_dom_vec_cva_lv(bbox, lv) {
+            const zoom = lv;
+            const tileSize = 256;
+            const minX = bbox.getSouthWest().lng;
+            const minY = bbox.getSouthWest().lat;
+            const maxX = bbox.getNorthEast().lng;
+            const maxY = bbox.getNorthEast().lat;
+
+            const nw = lngLatToTile(minX, maxY, zoom);
+            const ne = lngLatToTile(maxX, maxY, zoom);
+            const sw = lngLatToTile(minX, minY, zoom);
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            const tiles2 = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({ url: getTileWMTSUrlVEC(col, row, zoom), col: col, row: row });
+                    tiles2.push({ url: getTileWMTSUrlCVA(col, row, zoom), col: col, row: row });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            const canvas1 = document.createElement('canvas');
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom);
+            const [lastTile_se_x, lastTile_se_y] = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+            const geo_width = lastTile_se_x - firstTile_nw_x;
+            const geo_height = lastTile_se_y - firstTile_nw_y;
+            const pixelsPerDegreeX = canvasWidth / geo_width;
+            const pixelsPerDegreeY = canvasHeight / geo_height;
+            const selectionPixelWidth = (maxX - minX) * pixelsPerDegreeX;
+            const selectionPixelHeight = (minY - maxY) * pixelsPerDegreeY;
+
+            const canvas2 = document.createElement('canvas');
+            canvas2.width = Math.ceil(selectionPixelWidth);
+            canvas2.height = Math.ceil(selectionPixelHeight);
+            const ctx2 = canvas2.getContext('2d');
+
+            const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX;
+            const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY;
+
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const images = await getAllImages(tiles);
+                    images.forEach((img, index) => {
+                        const tile = tiles[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(img, x, y, tileSize, tileSize);
+                    });
+                    const cias = await getAllImages(tiles2);
+                    cias.forEach((cia, index) => {
+                        const tile = tiles2[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(cia, x, y, tileSize, tileSize);
+                    });
+                    const imageData = ctx1.getImageData(Math.floor(offset_x), Math.floor(offset_y), canvas2.width, canvas2.height);
+                    ctx2.putImageData(imageData, 0, 0);
+                    resolve(canvas2);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // ==================== 主程序 ====================
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        var map = new T.Map('map');
+        map.disableDoubleClickZoom();
+        map.centerAndZoom(new T.LngLat(103, 30.007), 18);
+
+        var ctrl = new T.Control.MapType({ position: T_ANCHOR_BOTTOM_RIGHT });
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        
+        $('#getDem').on('click', HD1);
+        
+        async function HD1() {
+            // 避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden');
+            
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            let bbox_geo = await getBbox()
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo);
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]), // 左下
+                new T.LngLat(bounds[2], bounds[3])  // 右上
+            );
+            // 构造扩大范围矩形
+            const geo_rectangle = [];
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng();
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat();
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng();
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat();
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny));
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy));
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy));
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny));
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            });
+            map.addOverLay(rect);
+            recTool.clear();
+            // 获取DEM数据
+            const demData = await fetch(DEMUrl);
+            const demDataClone = demData.clone();
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+            
+            // 清理旧对象
+            const old_dem_mesh = scene1.getObjectByName('mesh_dem');
+            if (old_dem_mesh) {
+                old_dem_mesh.geometry.dispose();
+                old_dem_mesh.material.dispose();
+            }
+            scene1.children.length = 0;
+            
+            // 创建DEM网格
+            const [mesh_dem, minEle, maxEle, geometry] = await c_mesh_dem(demDataArrayBuffer, camera1, 'mesh_dem');
+            
+            // 获取地形尺寸信息
+            const tiff = await GeoTIFF.fromArrayBuffer(demDataArrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const tiffWidth = image.getWidth();
+            const tiffHeight = image.getHeight();
+            const elevationData = new Float32Array(rasters[0]);
+            
+            // 计算模拟纹理的目标分辨率
+            // 设置最小和最大分辨率限制
+            const MIN_SIM_RESOLUTION = 128;
+            const MAX_SIM_RESOLUTION = 512;
+            const terrainAspectRatio = tiffHeight / tiffWidth;
+            
+            let simWidth, simHeight;
+            if (tiffWidth < MIN_SIM_RESOLUTION || tiffHeight < MIN_SIM_RESOLUTION) {
+                // 地形分辨率过低，提升到最小分辨率
+                simWidth = MIN_SIM_RESOLUTION;
+                simHeight = Math.round(MIN_SIM_RESOLUTION * terrainAspectRatio);
+            } else if (tiffWidth > MAX_SIM_RESOLUTION || tiffHeight > MAX_SIM_RESOLUTION) {
+                // 地形分辨率过高，限制到最大分辨率
+                if (tiffWidth > tiffHeight) {
+                    simWidth = MAX_SIM_RESOLUTION;
+                    simHeight = Math.round(MAX_SIM_RESOLUTION * terrainAspectRatio);
+                } else {
+                    simHeight = MAX_SIM_RESOLUTION;
+                    simWidth = Math.round(MAX_SIM_RESOLUTION / terrainAspectRatio);
+                }
+            } else {
+                // 地形分辨率合适，直接使用
+                simWidth = tiffWidth;
+                simHeight = tiffHeight;
+            }
+            
+            console.log(`地形分辨率: ${tiffWidth}x${tiffHeight}, 模拟分辨率: ${simWidth}x${simHeight}`);
+            
+            // 计算归一化高度数据
+            const heightData = new Float32Array(tiffWidth * tiffHeight);
+            for (let i = 0; i < elevationData.length; i++) {
+                heightData[i] = (elevationData[i] - minEle) / (maxEle - minEle);
+            }
+            
+            // 创建高度纹理 (RGBA格式以提高兼容性) - 用于地形渲染
+            const heightDataRGBA = new Float32Array(tiffWidth * tiffHeight * 4);
+            for (let i = 0; i < heightData.length; i++) {
+                heightDataRGBA[i * 4] = heightData[i];
+            }
+            const heightTexture = new THREE.DataTexture(
+                heightDataRGBA, 
+                tiffWidth, 
+                tiffHeight, 
+                THREE.RGBAFormat, 
+                THREE.FloatType
+            );
+            heightTexture.needsUpdate = true;
+            heightTexture.minFilter = THREE.LinearFilter;
+            heightTexture.magFilter = THREE.LinearFilter;
+            
+            // 创建模拟用的高分辨率高度纹理（通过GPU上采样）
+            // 使用渲染目标进行双线性插值上采样
+            const upscaleScene = new THREE.Scene();
+            const upscaleCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            const upscaleQuad = new THREE.PlaneGeometry(2, 2);
+            const upscaleMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uSourceTex: { value: heightTexture },
+                    uSourceResolution: { value: new THREE.Vector2(tiffWidth, tiffHeight) },
+                    uTargetResolution: { value: new THREE.Vector2(simWidth, simHeight) }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D uSourceTex;
+                    uniform vec2 uSourceResolution;
+                    uniform vec2 uTargetResolution;
+                    varying vec2 vUv;
+                    
+                    void main() {
+                        // 双线性插值采样
+                        vec4 heightValue = texture2D(uSourceTex, vUv);
+                        gl_FragColor = heightValue;
+                    }
+                `
+            });
+            const upscaleMesh = new THREE.Mesh(upscaleQuad, upscaleMaterial);
+            upscaleScene.add(upscaleMesh);
+            
+            // 创建高分辨率渲染目标
+            const simHeightRT = new THREE.WebGLRenderTarget(simWidth, simHeight, {
+                minFilter: THREE.NearestFilter,
+                magFilter: THREE.NearestFilter,
+                format: THREE.RGBAFormat,
+                type: THREE.FloatType,
+                depthBuffer: false,
+                stencilBuffer: false
+            });
+            
+            // 执行上采样渲染
+            renderer1.setRenderTarget(simHeightRT);
+            renderer1.render(upscaleScene, upscaleCamera);
+            renderer1.setRenderTarget(null);
+            
+            // 使用渲染后的纹理作为模拟高度纹理
+            const simHeightTexture = simHeightRT.texture;
+            simHeightTexture.minFilter = THREE.NearestFilter;
+            simHeightTexture.magFilter = THREE.NearestFilter;
+            
+            // 读取上采样后的数据用于CPU计算（梯度等）
+            const simHeightData = new Float32Array(simWidth * simHeight * 4);
+            renderer1.setRenderTarget(simHeightRT);
+            renderer1.readRenderTargetPixels(simHeightRT, 0, 0, simWidth, simHeight, simHeightData);
+            renderer1.setRenderTarget(null);
+            
+            // 加载DOM影像并转换为纹理数据
+            const img_cia_tiles = await c_dom_img_cia_lv(bbox_geo_expand, 18);
+            const domCanvas = img_cia_tiles;
+            const domCtx = domCanvas.getContext('2d');
+            const domImageData = domCtx.getImageData(0, 0, domCanvas.width, domCanvas.height);
+            const domData = new Uint8Array(domImageData.data);
+            
+            // 创建DOM纹理
+            const domTexture = new THREE.DataTexture(
+                domData, 
+                domCanvas.width, 
+                domCanvas.height, 
+                THREE.RGBAFormat, 
+                THREE.UnsignedByteType
+            );
+            domTexture.minFilter = THREE.LinearFilter;
+            domTexture.magFilter = THREE.LinearFilter;
+            domTexture.needsUpdate = true;
+            
+            // ==================== 创建 GPGPU 渲染目标 (Ping-Pong 双缓冲) ====================
+            function createRenderTarget(useLinear = false) {
+                return new THREE.WebGLRenderTarget(simWidth, simHeight, {
+                    minFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                    magFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                    format: THREE.RGBAFormat,
+                    type: THREE.FloatType,
+                    depthBuffer: false,
+                    stencilBuffer: false
+                });
+            }
+            
+            // 水深场双缓冲
+            let rtWater = [createRenderTarget(true), createRenderTarget(true)];
+            // 通量场双缓冲
+            let rtFlux = [createRenderTarget(false), createRenderTarget(false)];
+            // 污染标记双缓冲
+            let rtPollution = [createRenderTarget(true), createRenderTarget(true)];
+            
+            let currentBuffer = 0;
+            
+            // 初始化污染纹理为0
+            const clearColor = new THREE.Color(0, 0, 0);
+            renderer1.setClearColor(clearColor, 0);
+            renderer1.setRenderTarget(rtPollution[0]);
+            renderer1.clear();
+            renderer1.setRenderTarget(rtPollution[1]);
+            renderer1.clear();
+            renderer1.setRenderTarget(null);
+            
+            // GPGPU 场景和相机
+            const gpgpuScene = new THREE.Scene();
+            const gpgpuCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            const gpgpuQuad = new THREE.PlaneGeometry(2, 2);
+            
+            // ==================== 获取着色器与材质工厂 ====================
+            const {
+                createFluxShader,
+                createWaterShader,
+                createWaterRenderMaterial,
+                createGPGPUMaterial,
+                createPollutionShader
+            } = window.FluidShaders;
+            
+            // ==================== 物理参数 ====================
+            // 地形尺寸常量
+            const TERRAIN_SIZE = 5; // PlaneGeometry的宽度
+            
+            // 这些参数用于浅水方程模拟，与fluid.html保持一致
+            const params = {
+                gravity: 15.0,      // 重力加速度，保持质量感
+                pipeArea: 0.35,     // 管道横截面积，影响流速
+                pipeLength: 2.4,    // 管道长度，影响流速计算
+                dt: 0.005,          // 时间步长
+                injectAmount: 1.6,  // 注入量
+                evaporation: 0.0000 // 蒸发速率
+            };
+            
+            // 注入半径根据地形尺寸自动计算
+            // 设定为地形宽度的固定比例，例如 1.5%
+            const INJECT_RADIUS_RATIO = 0.015; // 注入半径占地形宽度的比例
+            const injectRadiusWorld = TERRAIN_SIZE * INJECT_RADIUS_RATIO; // 世界坐标系中的半径
+            const injectRadiusUV = INJECT_RADIUS_RATIO; // UV坐标系中的半径（直接使用比例）
+            
+            // ==================== 参数控制面板 ====================
+            // 显示参数面板
+            $('#ParamPanel').css('visibility', 'visible');
+            
+            // 保存默认参数
+            const defaultParams = { ...params };
+            
+            // 参数滑块事件监听
+            $('#gravitySlider').on('input', function() {
+                const value = parseFloat($(this).val());
+                $('#gravityValue').text(value.toFixed(1));
+                params.gravity = value;
+                fluxUniforms.uGravity.value = value;
+            });
+            
+            $('#pipeAreaSlider').on('input', function() {
+                const value = parseFloat($(this).val());
+                $('#pipeAreaValue').text(value.toFixed(2));
+                params.pipeArea = value;
+                fluxUniforms.uPipeArea.value = value;
+            });
+            
+            $('#pipeLengthSlider').on('input', function() {
+                const value = parseFloat($(this).val());
+                $('#pipeLengthValue').text(value.toFixed(1));
+                params.pipeLength = value;
+                fluxUniforms.uPipeLength.value = value;
+                waterUniforms.uPipeLength.value = value;
+            });
+            
+            $('#dtSlider').on('input', function() {
+                const value = parseFloat($(this).val());
+                $('#dtValue').text(value.toFixed(3));
+                params.dt = value;
+                fluxUniforms.uDt.value = value;
+                waterUniforms.uDt.value = value;
+            });
+            
+            $('#injectAmountSlider').on('input', function() {
+                const value = parseFloat($(this).val());
+                $('#injectAmountValue').text(value.toFixed(1));
+                params.injectAmount = value;
+                waterUniforms.uInjectAmount.value = value;
+            });
+            
+            // 注入半径已取消手动控制，由地形尺寸自动计算
+            
+            $('#evaporationSlider').on('input', function() {
+                const value = parseFloat($(this).val());
+                $('#evaporationValue').text(value.toFixed(4));
+                params.evaporation = value;
+                waterUniforms.uEvaporation.value = 1.0 - value;
+            });
+            
+            $('#maxDepthSlider').on('input', function() {
+                const value = parseFloat($(this).val());
+                $('#maxDepthValue').text(value.toFixed(2));
+                waterRenderMat.uniforms.uMaxDepth.value = value;
+            });
+            
+            // 重置参数按钮
+            $('#resetParams').on('click', function() {
+                // 重置所有参数
+                params.gravity = defaultParams.gravity;
+                params.pipeArea = defaultParams.pipeArea;
+                params.pipeLength = defaultParams.pipeLength;
+                params.dt = defaultParams.dt;
+                params.injectAmount = defaultParams.injectAmount;
+                params.evaporation = defaultParams.evaporation;
+                
+                // 注入半径由地形尺寸自动计算，无需重置
+                
+                // 更新UI
+                $('#gravitySlider').val(defaultParams.gravity);
+                $('#gravityValue').text(defaultParams.gravity.toFixed(1));
+                $('#pipeAreaSlider').val(defaultParams.pipeArea);
+                $('#pipeAreaValue').text(defaultParams.pipeArea.toFixed(2));
+                $('#pipeLengthSlider').val(defaultParams.pipeLength);
+                $('#pipeLengthValue').text(defaultParams.pipeLength.toFixed(1));
+                $('#dtSlider').val(defaultParams.dt);
+                $('#dtValue').text(defaultParams.dt.toFixed(3));
+                $('#injectAmountSlider').val(defaultParams.injectAmount);
+                $('#injectAmountValue').text(defaultParams.injectAmount.toFixed(1));
+                $('#evaporationSlider').val(defaultParams.evaporation);
+                $('#evaporationValue').text(defaultParams.evaporation.toFixed(4));
+                $('#maxDepthSlider').val(0.05);
+                $('#maxDepthValue').text('0.05');
+                
+                // 更新uniforms
+                fluxUniforms.uGravity.value = defaultParams.gravity;
+                fluxUniforms.uPipeArea.value = defaultParams.pipeArea;
+                fluxUniforms.uPipeLength.value = defaultParams.pipeLength;
+                fluxUniforms.uDt.value = defaultParams.dt;
+                waterUniforms.uPipeLength.value = defaultParams.pipeLength;
+                waterUniforms.uDt.value = defaultParams.dt;
+                waterUniforms.uInjectAmount.value = defaultParams.injectAmount;
+                // uInjectRadius不需要重置，由地形尺寸自动计算
+                waterUniforms.uEvaporation.value = 1.0 - defaultParams.evaporation;
+                waterRenderMat.uniforms.uMaxDepth.value = 0.05;
+            });
+            
+            // 关闭参数面板
+            $('#closeParamPanel').on('click', function() {
+                $('#ParamPanel').css('visibility', 'hidden');
+            });
+            
+            // 为参数面板添加拖动功能
+            interact('#ParamPanel')
+                .draggable({
+                    allowFrom: '.param_header',
+                    listeners: {
+                        move(event) {
+                            const target = event.target;
+                            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+                            
+                            target.style.transform = `translate(${x}px, ${y}px)`;
+                            target.setAttribute('data-x', x);
+                            target.setAttribute('data-y', y);
+                        }
+                    },
+                    modifiers: [
+                        interact.modifiers.restrictRect({
+                            restriction: 'parent',
+                            endOnly: true
+                        })
+                    ]
+                });
+            
+            // 创建shader材质展示DOM影像和污染效果
+            const terrainMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTerrainTex: { value: domTexture },
+                    uPollutionTex: { value: null },
+                    uWaterTex: { value: null },
+                    uHasTerrainTex: { value: 1.0 },
+                    uTerrainColor: { value: new THREE.Color(0x3a5f3a) },
+                    uPollutionColor: { value: new THREE.Color(0x8b4513) },
+                    uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.5) },
+                    uAmbient: { value: 0.4 },
+                    uDiffuse: { value: 0.6 }
+                },
+                vertexShader: `
+                    varying vec3 vNormal;
+                    varying vec2 vUv;
+                    
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D uTerrainTex;
+                    uniform sampler2D uPollutionTex;
+                    uniform sampler2D uWaterTex;
+                    uniform float uHasTerrainTex;
+                    uniform vec3 uTerrainColor;
+                    uniform vec3 uPollutionColor;
+                    uniform vec3 uLightDir;
+                    uniform float uAmbient;
+                    uniform float uDiffuse;
+                    
+                    varying vec3 vNormal;
+                    varying vec2 vUv;
+                    
+                    void main() {
+                        // 翻转UV的Y坐标以匹配纹理方向
+                        vec2 flippedUV = vec2(vUv.x, 1.0 - vUv.y);
+                        
+                        // 获取基础地形颜色
+                        vec3 baseColor = uTerrainColor;
+                        if (uHasTerrainTex > 0.5) {
+                            baseColor = texture2D(uTerrainTex, flippedUV).rgb;
+                        }
+                        
+                        // 读取污染强度
+                        float pollutionAmount = texture2D(uPollutionTex, flippedUV).r;
+                        float pollutionStrength = smoothstep(0.002, 0.15, pollutionAmount);
+                        
+                        // 混合基础颜色和污染颜色
+                        vec3 finalColor = mix(baseColor, uPollutionColor, pollutionStrength * 0.7);
+                        
+                        // 简单光照计算
+                        vec3 lightDir = normalize(uLightDir);
+                        float diff = max(dot(vNormal, lightDir), 0.0);
+                        vec3 color = finalColor * (uAmbient + uDiffuse * diff);
+                        
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide
+            });
+            
+            mesh_dem.material = terrainMat;
+            // 初始化地形材质的污染纹理和水深纹理
+            terrainMat.uniforms.uPollutionTex.value = rtPollution[0].texture;
+            terrainMat.uniforms.uWaterTex.value = rtWater[0].texture;
+            scene1.add(mesh_dem);
+            
+            // ==================== 创建计算材质 ====================
+            // 通量计算材质
+            const fluxShader = createFluxShader();
+            const fluxUniforms = {
+                uWaterTex: { value: null },
+                uHeightTex: { value: simHeightTexture },
+                uFluxTex: { value: null },
+                uResolution: { value: new THREE.Vector2(simWidth, simHeight) },
+                uDt: { value: params.dt },
+                uGravity: { value: params.gravity },
+                uPipeArea: { value: params.pipeArea },
+                uPipeLength: { value: params.pipeLength }
+            };
+            const fluxMaterial = createGPGPUMaterial(fluxShader, fluxUniforms);
+            const fluxMesh = new THREE.Mesh(gpgpuQuad, fluxMaterial);
+            
+            // 水深更新材质
+            const waterShader = createWaterShader();
+            const waterUniforms = {
+                uWaterTex: { value: null },
+                uFluxTex: { value: null },
+                uHeightTex: { value: simHeightTexture },
+                uResolution: { value: new THREE.Vector2(simWidth, simHeight) },
+                uDt: { value: params.dt },
+                uPipeLength: { value: params.pipeLength },
+                uInjectActive: { value: false },
+                uInjectPos: { value: new THREE.Vector2(-1, -1) },
+                uInjectRadius: { value: injectRadiusUV },
+                uInjectAmount: { value: params.injectAmount },
+                uEvaporation: { value: 1.0 - params.evaporation },
+                uSlopeDir: { value: new THREE.Vector2(0, 0) }
+            };
+            const waterMaterial = createGPGPUMaterial(waterShader, waterUniforms);
+            const waterMesh = new THREE.Mesh(gpgpuQuad.clone(), waterMaterial);
+            
+            // 污染标记材质
+            const pollutionShader = createPollutionShader();
+            const pollutionUniforms = {
+                uPollutionTex: { value: null },
+                uWaterTex: { value: null },
+                uPollutionRate: { value: 0.3 },
+                uDecayRate: { value: 0.00001 }
+            };
+            const pollutionMaterial = createGPGPUMaterial(pollutionShader, pollutionUniforms);
+            const pollutionMesh = new THREE.Mesh(gpgpuQuad.clone(), pollutionMaterial);
+            
+            // ==================== 创建水面渲染网格 ====================
+            // TERRAIN_SIZE 已在前面定义
+            const terrainAspect = tiffHeight / tiffWidth;
+            
+            // 重要：水面网格的分段数必须与模拟纹理分辨率完全一致
+            // 否则会导致纹理采样错位
+            const waterSegmentsX = simWidth - 1;
+            const waterSegmentsY = simHeight - 1;
+            
+            console.log(`地形尺寸: ${tiffWidth}x${tiffHeight}, 模拟分辨率: ${simWidth}x${simHeight}, 水面网格分段: ${waterSegmentsX}x${waterSegmentsY}`);
+            
+            // 水面网格分段数与模拟分辨率保持一致
+            const waterGeo = new THREE.PlaneGeometry(
+                TERRAIN_SIZE,
+                TERRAIN_SIZE * terrainAspect,
+                waterSegmentsX,
+                waterSegmentsY
+            );
+            const waterRenderMat = createWaterRenderMaterial();
+            waterRenderMat.uniforms.uHeightTex.value = heightTexture;
+            // uHeightScale不再使用，但保留uniform定义以免报错
+            waterRenderMat.uniforms.uHeightScale.value = 1.0;
+            waterRenderMat.uniforms.uMaxDepth.value = 0.05; // 最大水深阈值，用于颜色过渡
+            waterRenderMat.uniforms.uResolution.value.set(simWidth, simHeight);
+            waterRenderMat.uniforms.uTerrainSize.value = TERRAIN_SIZE;
+            waterRenderMat.uniforms.uLightDir.value.set(0.5, 0.8, 0.5).normalize();
+            waterRenderMat.uniforms.uSpecularColor.value.setHex(0xffffff);
+            waterRenderMat.uniforms.uShininess.value = 100.0;
+            
+            const waterSurface = new THREE.Mesh(waterGeo, waterRenderMat);
+            waterSurface.rotation.x = -Math.PI / 2;
+            waterSurface.position.y = 0.001;
+            scene1.add(waterSurface);
+            
+            // ==================== 射线检测和点击交互 ====================
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+            let isInjecting = false;
+            let injectUV = new THREE.Vector2();
+            
+            function onMouseDown(event) {
+                const rect = renderer1.domElement.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                
+                raycaster.setFromCamera(mouse, camera1);
+                const intersects = raycaster.intersectObject(mesh_dem);
+                
+                if (intersects.length > 0) {
+                    // 重置所有流体和污染纹理
+                    resetSimulation();
+                    
+                    const uv = intersects[0].uv;
+                    // 翻转 V 坐标以匹配模拟纹理方向
+                    injectUV.set(uv.x, 1.0 - uv.y);
+                    
+                    // 获取点击位置的归一化高度（使用模拟分辨率）
+                    const ix = Math.floor(uv.x * simWidth);
+                    const iy = Math.floor((1.0 - uv.y) * simHeight);
+                    const heightValue = simHeightData[(iy * simWidth + ix) * 4];
+                    
+                    
+                    // 在相交点创建一个白色小球标记 - 已取消
+                    // const point = intersects[0].point;
+                    // const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+                    // const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                    // const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                    // sphere.position.copy(point);
+                    // sphere.position.y += 0.02; // 稍微抬高避免z-fighting
+                    // sphere.name = 'clickMarker';
+                    
+                    // 移除旧的标记 - 已取消
+                    // const oldMarker = scene1.getObjectByName('clickMarker');
+                    // if (oldMarker) {
+                    //     scene1.remove(oldMarker);
+                    //     oldMarker.geometry.dispose();
+                    //     oldMarker.material.dispose();
+                    // }
+                    // scene1.add(sphere);
+                    
+                    // 计算地形梯度方向
+                    const slopeDir = calculateSlopeDirection(uv.x, 1.0 - uv.y);
+                    waterUniforms.uSlopeDir.value.copy(slopeDir);
+                    
+                    isInjecting = true;
+                    waterUniforms.uInjectActive.value = true;
+                    waterUniforms.uInjectPos.value.copy(injectUV);
+                }
+            }
+            
+            function onMouseUp() {
+                isInjecting = false;
+                waterUniforms.uInjectActive.value = false;
+            }
+            
+            function onMouseMove(event) {
+                if (!isInjecting) return;
+                
+                const rect = renderer1.domElement.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                
+                raycaster.setFromCamera(mouse, camera1);
+                const intersects = raycaster.intersectObject(mesh_dem);
+                
+                if (intersects.length > 0) {
+                    const uv = intersects[0].uv;
+                    injectUV.set(uv.x, 1.0 - uv.y);
+                    waterUniforms.uInjectPos.value.copy(injectUV);
+                    
+                    const slopeDir = calculateSlopeDirection(uv.x, 1.0 - uv.y);
+                    waterUniforms.uSlopeDir.value.copy(slopeDir);
+                    
+                    // 更新白色小球的位置 - 已取消
+                    // const marker = scene1.getObjectByName('clickMarker');
+                    // if (marker) {
+                    //     marker.position.copy(intersects[0].point);
+                    //     marker.position.y += 0.02;
+                    // }
+                }
+            }
+            
+            // 计算地形梯度方向
+            function calculateSlopeDirection(u, v) {
+                const texelX = 1 / simWidth;
+                const texelY = 1 / simHeight;
+                
+                const ix = Math.floor(u * simWidth);
+                const iy = Math.floor(v * simHeight);
+                
+                const getHeight = (x, y) => {
+                    x = Math.max(0, Math.min(simWidth - 1, x));
+                    y = Math.max(0, Math.min(simHeight - 1, y));
+                    return simHeightData[(y * simWidth + x) * 4];
+                };
+                
+                const hC = getHeight(ix, iy);
+                const hR = getHeight(ix + 1, iy);
+                const hL = getHeight(ix - 1, iy);
+                const hT = getHeight(ix, iy + 1);
+                const hB = getHeight(ix, iy - 1);
+                
+                const gradX = -(hR - hL) * texelX;
+                const gradY = -(hT - hB) * texelY;
+                
+                const len = Math.sqrt(gradX * gradX + gradY * gradY);
+                if (len > 1e-6) {
+                    return new THREE.Vector2(gradX / len, gradY / len);
+                }
+                return new THREE.Vector2(0, 0);
+            }
+            
+            renderer1.domElement.addEventListener('mousedown', onMouseDown);
+            renderer1.domElement.addEventListener('mouseup', onMouseUp);
+            renderer1.domElement.addEventListener('mousemove', onMouseMove);
+            renderer1.domElement.addEventListener('mouseleave', onMouseUp);
+            
+            function resetSimulation() {
+                const clearColor = new THREE.Color(0, 0, 0);
+                renderer1.setClearColor(clearColor, 0);
+                
+                renderer1.setRenderTarget(rtWater[0]);
+                renderer1.clear();
+                renderer1.setRenderTarget(rtWater[1]);
+                renderer1.clear();
+                
+                renderer1.setRenderTarget(rtFlux[0]);
+                renderer1.clear();
+                renderer1.setRenderTarget(rtFlux[1]);
+                renderer1.clear();
+                
+                renderer1.setRenderTarget(rtPollution[0]);
+                renderer1.clear();
+                renderer1.setRenderTarget(rtPollution[1]);
+                renderer1.clear();
+                
+                renderer1.setRenderTarget(null);
+            }
+            
+            // ==================== 模拟步进函数 ====================
+            function simulationStep() {
+                const curr = currentBuffer;
+                const next = 1 - curr;
+                
+                gpgpuScene.clear();
+                
+                // 步顤1: 计算通量
+                gpgpuScene.add(fluxMesh);
+                fluxUniforms.uWaterTex.value = rtWater[curr].texture;
+                fluxUniforms.uFluxTex.value = rtFlux[curr].texture;
+                renderer1.setRenderTarget(rtFlux[next]);
+                renderer1.render(gpgpuScene, gpgpuCamera);
+                
+                // 步顤2: 更新水深
+                gpgpuScene.clear();
+                gpgpuScene.add(waterMesh);
+                waterUniforms.uWaterTex.value = rtWater[curr].texture;
+                waterUniforms.uFluxTex.value = rtFlux[next].texture;
+                renderer1.setRenderTarget(rtWater[next]);
+                renderer1.render(gpgpuScene, gpgpuCamera);
+                
+                // 步顤3: 更新污染标记
+                gpgpuScene.clear();
+                gpgpuScene.add(pollutionMesh);
+                pollutionUniforms.uPollutionTex.value = rtPollution[curr].texture;
+                pollutionUniforms.uWaterTex.value = rtWater[next].texture;
+                renderer1.setRenderTarget(rtPollution[next]);
+                renderer1.render(gpgpuScene, gpgpuCamera);
+                
+                // 步顤4: 交换缓冲
+                currentBuffer = next;
+                
+                // 更新渲染材质
+                waterRenderMat.uniforms.uWaterTex.value = rtWater[currentBuffer].texture;
+                terrainMat.uniforms.uPollutionTex.value = rtPollution[currentBuffer].texture;
+                terrainMat.uniforms.uWaterTex.value = rtWater[currentBuffer].texture;
+            }
+            
+            // 显示3D窗口
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex);
+                $('#Window_3D').css('visibility', 'visible');
+                
+                // 窗口显示后初始化interact拖动缩放功能
+                init3DViewDragResize('Window_3D');
+                console.log('interact 初始化完成');
+                
+                resolve();
+            });
+
+            // 渲染循环
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                // 执行多次模拟步进以提高稳定性
+                const subSteps = 5;
+                for (let i = 0; i < subSteps; i++) {
+                    simulationStep();
+                }
+                
+                control1.update();
+                
+                // 重置渲染目标并渲染主场景
+                renderer1.setRenderTarget(null);
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+        }
+        
+        // ==================== 窗口控制按钮 ====================
+        $('#clo_con1').on('click', function () {
+            $('#Window_3D').css('visibility', 'hidden');
+            recTool.clear();
+        });
+        
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 3.5);
+        });
+        
+        // ==================== interact组件拖动缩放功能 ====================
+        function init3DViewDragResize(elementId) {
+            console.log('开始初始化 interact:', elementId);
+            
+            const element = document.getElementById(elementId);
+            if (!element) {
+                console.error('元素不存在:', elementId);
+                return;
+            }
+            
+            // 清理之前的interact实例
+            interact(element).unset();
+            
+            interact(element)
+                .draggable({
+                    // 只在v_header区域可以拖动
+                    allowFrom: '.v_header',
+                    listeners: {
+                        start(event) {
+                            console.log('开始拖动');
+                        },
+                        move(event) {
+                            const target = event.target;
+                            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+                            
+                            target.style.transform = `translate(${x}px, ${y}px)`;
+                            target.setAttribute('data-x', x);
+                            target.setAttribute('data-y', y);
+                        }
+                    },
+                    modifiers: [
+                        interact.modifiers.restrictRect({
+                            restriction: 'parent',
+                            endOnly: true
+                        })
+                    ]
+                })
+                .resizable({
+                    edges: { left: true, right: true, bottom: true, top: true },
+                    listeners: {
+                        start(event) {
+                            console.log('开始缩放');
+                        },
+                        move(event) {
+                            const target = event.target;
+                            let x = parseFloat(target.getAttribute('data-x')) || 0;
+                            let y = parseFloat(target.getAttribute('data-y')) || 0;
+                            
+                            // 更新元素尺寸
+                            target.style.width = event.rect.width + 'px';
+                            target.style.height = event.rect.height + 'px';
+                            
+                            // 处理从左侧或顶部拉伸时的位置变化
+                            x += event.deltaRect.left;
+                            y += event.deltaRect.top;
+                            
+                            target.style.transform = `translate(${x}px, ${y}px)`;
+                            target.setAttribute('data-x', x);
+                            target.setAttribute('data-y', y);
+                            
+                            // 同步更新three.js渲染器尺寸
+                            const container = target.querySelector('.three_container');
+                            if (container) {
+                                const newWidth = event.rect.width - 10;
+                                const newHeight = event.rect.height - 40;
+                                container.style.width = newWidth + 'px';
+                                container.style.height = newHeight + 'px';
+                                
+                                // 更新renderer尺寸
+                                if (renderer1) {
+                                    renderer1.setSize(newWidth, newHeight);
+                                    camera1.aspect = newWidth / newHeight;
+                                    camera1.updateProjectionMatrix();
+                                }
+                            }
+                        }
+                    },
+                    modifiers: [
+                        interact.modifiers.restrictSize({
+                            min: { width: 400, height: 300 }
+                        })
+                    ],
+                    // 设置缩放的边距（更容易抓取边缘）
+                    margin: 10
+                });
+                
+            console.log('interact 配置完成');
+        }
+    </script>
+</body>
+
+</html>

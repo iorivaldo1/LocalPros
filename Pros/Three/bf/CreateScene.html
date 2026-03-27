@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        #map {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+        }
+
+        #treeCon1 {
+            position: absolute;
+            top: 20px;
+            right: 100px;
+            width: 500px;
+            height: 500px;
+            background-color: rgba(136, 147, 161, 0.3);
+            z-index: 450;
+        }
+
+        #btn1 {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="btn1">T</button>
+    <div id="treeCon1"></div>
+
+    <script>
+        const smoothness = 0.5
+        const heightScale = 3.0
+        const camera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 0, 3);
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+
+        const loader = new THREE.TextureLoader();
+        const texture = loader.load(
+            '/Public/imgs/three/bg1.jpeg',
+            () => {
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                texture.colorSpace = THREE.SRGBColorSpace;
+                scene1.background = texture;
+            });
+
+        const scene1 = new THREE.Scene();
+        scene1.background = new THREE.Color(0x1a1a2e);
+        const container = $('#treeCon1')
+        const renderer1 = new THREE.WebGLRenderer({ antialias: true });
+        renderer1.setSize(container[0].clientWidth, container[0].clientHeight);
+        container[0].appendChild(renderer1.domElement);
+        scene1.add(ambientLight);
+        scene1.add(directionalLight);
+        const controls1 = new THREE.OrbitControls(camera, renderer1.domElement);
+        controls1.enableDamping = true;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls1.update();
+            renderer1.render(scene1, camera);
+
+        }
+        animate();
+
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 15);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        // map.centerAndZoom(new T.LngLat(99.4, 30.3), 15);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+
+        async function loadDEMFromGeoServer(m_file, m_scene, m_meshname) {
+            const arrayBuffer = await m_file.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+
+            const width = image.getWidth();
+            const height = image.getHeight();
+
+            let elevationData;
+            if (rasters[0] instanceof Float32Array) {
+                elevationData = rasters[0];
+            } else if (rasters[0] instanceof Int16Array) {
+                elevationData = new Float32Array(rasters[0]);
+            } else {
+                elevationData = new Float32Array(rasters[0]);
+            }
+            var mesh = processElevationData(elevationData, width, height, m_scene, m_meshname);
+            return mesh;
+        }
+
+        function processElevationData(m_data, m_width, m_height, m_scene, m_meshname) {
+            const geometry = new THREE.PlaneGeometry(5, 5 * m_height / m_width, m_width - 1, m_height - 1);
+            const vertices = geometry.attributes.position.array;
+            let maxElevation = -Infinity;
+            for (let i = 0; i < m_data.length; i++) {
+                if (m_data[i] > maxElevation) {
+                    maxElevation = m_data[i];
+                }
+            }
+
+            let minElevation = Infinity;
+            for (let i = 0; i < m_data.length; i++) {
+                const num = m_data[i];
+                if (num !== 0 && num < minElevation) {
+                    minElevation = num;
+                }
+            }
+            const n_data = m_data.map(num => num === 0 ? minElevation - 1 : num)
+
+            const positions = geometry.attributes.position.array;
+            for (let i = 0; i < m_data.length; i++) {
+                positions[i * 3 + 2] = (m_data[i] - minElevation) / (maxElevation - minElevation); // 设置Z坐标
+            }
+            geometry.attributes.position.needsUpdate = true;
+            geometry.computeVertexNormals();
+
+            const colors = [];
+            for (let i = 0, j = 0; i < vertices.length; i += 3, j++) {
+                if (j < m_data.length) {
+                    const elevation = (n_data[j] - minElevation) / (maxElevation - minElevation);
+                    const color = new THREE.Color();
+                    color.setHSL(0.7 * (1 - elevation), 1, 0.5);
+                    colors.push(color.r, color.g, color.b);
+                }
+            }
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            var mesh = new THREE.Mesh(geometry);
+            mesh.name = m_meshname
+            mesh.rotation.x = -Math.PI / 2;
+            m_scene.add(mesh);
+            camera.position.set(0, 2, 3.5);
+
+            return mesh
+        }
+
+        function getMeshByName(m_scene, m_name) {
+            let targetMesh = null;
+            m_scene.traverse(function (object) {
+                if (object.isMesh && object.name === m_name) {
+                    targetMesh = object;
+                }
+            });
+            return targetMesh;
+        }
+
+
+        $('#btn1').on('click', HD1)
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                var minX = e.currentBounds.getSouthWest().lng
+                var minY = e.currentBounds.getSouthWest().lat
+                var maxX = e.currentBounds.getNorthEast().lng
+                var maxY = e.currentBounds.getNorthEast().lat
+                var pro_p1 = LatLon2XY(minX, minY)
+                var pro_p2 = LatLon2XY(maxX, maxY)
+                var dem_COP_URL =
+                    'http://localhost:8080/geoserver/WMS_DEM/wms?' +
+                    'Request=GetMap' +
+                    '&Service=WMS' +
+                    '&Version=1.1.0' +
+                    '&LAYERS=WMS_DEM%3ADEM_YA_COP' +
+                    '&STYLE=' +
+                    '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+                    '&WIDTH=' + Math.floor((pro_p2.y - pro_p1.y) / 12.5) +
+                    '&HEIGHT=' + Math.floor((pro_p2.x - pro_p1.x) / 12.5) +
+                    '&SRS=EPSG%3A4326' +
+                    '&FORMAT=image%2Fgeotiff' +
+                    '&TRANSPARENT=true'
+                //'&LAYERS=WMS_DOM%3Aya_yc_e-5' +
+                //'&LAYERS=WMS_DOM%3Aya_e-4' +
+                var dom_width = Math.floor((pro_p2.y - pro_p1.y))
+                var dom_height = Math.floor((pro_p2.x - pro_p1.x))
+                var domURL =
+                    'http://localhost:8080/geoserver/WMS_DOM/wms?' +
+                    'Request=GetMap' +
+                    '&Service=WMS' +
+                    '&Version=1.1.0' +
+                    '&LAYERS=WMS_DOM%3Aya' +
+                    '&STYLE=' +
+                    '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+                    '&WIDTH=' + dom_width +
+                    '&HEIGHT=' + dom_height +
+                    '&SRS=EPSG%3A4326' +
+                    '&FORMAT=image%2Fpng' +
+                    '&TRANSPARENT=true'
+
+
+                const textureLoader = new THREE.TextureLoader();
+                textureLoader.load(
+                    domURL,
+                    function (texture) {
+                        var ex_mesh = getMeshByName(scene1, 'mesh_cop')
+                        if (ex_mesh) {
+                            scene1.remove(ex_mesh);
+                            ex_mesh.geometry.dispose();
+                            ex_mesh.material.dispose();
+                        }
+                        fetch(dem_COP_URL).then(res => {
+                            var mesh = loadDEMFromGeoServer(res, scene1, 'mesh_cop')
+                            return mesh
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+                        })
+                    },
+                )
+
+            })
+        }
+    </script>
+</body>
+
+</html>

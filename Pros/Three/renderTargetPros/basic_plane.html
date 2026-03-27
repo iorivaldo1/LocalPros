@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 5, 3);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        //-----------------------------------
+        
+        const plane_geometry = new THREE.PlaneGeometry(5,5,50,50)
+        const material = new THREE.MeshPhongMaterial({
+            color:'#6a5d31',
+            side: THREE.DoubleSide
+        });
+        const plane = new THREE.Mesh(plane_geometry, material);
+        plane.rotateX(- Math.PI/2)
+        scene.add(plane);
+
+
+        //-----------------------------------
+
+        // 动画循环
+        function render(time) {
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+
+        }
+
+        requestAnimationFrame(render);
+
+
+    </script>
+</body>
+
+</html>

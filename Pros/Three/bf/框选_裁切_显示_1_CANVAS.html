@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>CutTdtIMG</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #canvas1 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+            /* width:500px; */
+            /* height:500px */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <button id="getDem">T</button>
+
+    <script>
+        var map = new T.Map('map', { tileSize: 256 });
+        map.centerAndZoom(new T.LngLat(103, 30), 18);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                getCuttedImgFromTDT(e,'canvas1')
+            })
+
+        }
+    </script>
+</body>
+
+</html>

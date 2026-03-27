@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- <script src="/Public/js/three.min.js"></script> -->
+    <script src="/Public/js/three_shaders.js"></script>
+    <!-- <script src="/Public/js/OrbitControls.js"></script> -->
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="../deepSeekTest.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+
+    <script type="importmap">
+			{
+				"imports": {
+					"three": "/Public/lib/three/three.module.js",
+					"three/addons/": "/Public/lib/three/jsm/"
+				}
+			}
+		</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { Water } from 'three/addons/objects/Water.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { Sky } from 'three/addons/objects/Sky.js';
+        // 初始化 Three.js 场景
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // 创建相机
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(4, 3.5, 3);
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 添加光源
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // 添加控制器
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        let water, sun;
+
+        //-------------------------------------
+        const file = '/Public/imgs/dem/terrain2.tif';
+        const res = await fetch(file)
+        const arrayBuffer = await res.arrayBuffer();
+        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer)
+        const image = await tiff.getImage()
+        const rasters = await image.readRasters()
+        const width = image.getWidth()
+        const height = image.getHeight()
+        const elevationData = new Float32Array(rasters[0])
+        const geometry = new THREE.PlaneGeometry(5, 5 * height / width, width - 1, height - 1)
+        let maxElevation = -Infinity
+        for (let i = 0; i < elevationData.length; i++) {
+            if (elevationData[i] > maxElevation) {
+                maxElevation = elevationData[i]
+            }
+        }
+        let minElevation = Infinity
+        for (let i = 0; i < elevationData.length; i++) {
+            const num = elevationData[i]
+            if (num !== 0 && num < minElevation) {
+                minElevation = num
+            }
+        }
+        const positions = geometry.attributes.position.array
+        for (let i = 0; i < elevationData.length; i++) {
+            if (maxElevation == minElevation) {
+                positions[i * 3 + 2] = 0
+            }
+            else {
+                positions[i * 3 + 2] = (elevationData[i] - minElevation) / (maxElevation - minElevation) // 设置Z坐标
+            }
+        }
+        geometry.attributes.position.needsUpdate = true
+        geometry.computeVertexNormals()
+
+        water = new Water(
+            geometry,
+            {
+                textureWidth: 512,
+                textureHeight: 512,
+                waterNormals: new THREE.TextureLoader().load('/Public/imgs/three/waternormals.jpg', function (texture) {
+
+                    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+
+                }),
+                sunDirection: new THREE.Vector3(),
+                sunColor: 0xffffff,
+                waterColor: 0x001e0f,
+                distortionScale: 3.7,
+                fog: scene.fog !== undefined
+            }
+        );
+        water.rotation.x = - Math.PI / 2;
+        scene.add(water)
+
+        const sky = new Sky();
+        sky.scale.setScalar(10000);
+        scene.add(sky);
+
+        const skyUniforms = sky.material.uniforms;
+
+        skyUniforms['turbidity'].value = 10;
+        skyUniforms['rayleigh'].value = 2;
+        skyUniforms['mieCoefficient'].value = 0.005;
+        skyUniforms['mieDirectionalG'].value = 0.8;
+
+        const parameters = {
+            elevation: 5,
+            azimuth: 90
+        };
+
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        const sceneEnv = new THREE.Scene();
+
+        let renderTarget;
+        sun = new THREE.Vector3();
+
+        const phi = THREE.MathUtils.degToRad(90 - parameters.elevation);
+        const theta = THREE.MathUtils.degToRad(parameters.azimuth);
+        sun.setFromSphericalCoords(1, phi, theta);
+        sky.material.uniforms['sunPosition'].value.copy(sun);
+        water.material.uniforms['sunDirection'].value.copy(sun).normalize();
+        if (renderTarget !== undefined) renderTarget.dispose();
+        sceneEnv.add(sky);
+        renderTarget = pmremGenerator.fromScene(sceneEnv);
+        scene.add(sky);
+        scene.environment = renderTarget.texture;
+
+
+        //-------------------------------------
+        function animate() {
+            requestAnimationFrame(animate);
+            water.material.uniforms.time.value += 0.001
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        //启动动画
+        animate();
+
+
+    </script>
+</body>
+
+</html>

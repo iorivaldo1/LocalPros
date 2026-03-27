@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        #fileInput {
+            position: absolute;
+            top: 50px;
+            right: 100px;
+            background-color: white;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <input type="file" id="fileInput" accept=".tif,.tiff">
+    <script>
+        let terrainMesh = null;
+        let heightScale = 0.5;
+        let smoothness = 3;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // 创建相机
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 2, 3);
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 添加光源
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // 添加坐标轴辅助
+        const axesHelper = new THREE.AxesHelper();
+        scene.add(axesHelper);
+
+        // 添加控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        //读取dem
+        function HD1() {
+            const file = event.target.files[0]
+            loadDEMFromGeoServer(file)
+        }
+
+        async function loadDEMFromGeoServer(file) {
+            const arrayBuffer = await file.arrayBuffer();
+             console.log(arrayBuffer)
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+
+            const width = image.getWidth();
+            const height = image.getHeight();
+
+            let elevationData;
+            if (rasters[0] instanceof Float32Array) {
+                elevationData = rasters[0];
+            } else if (rasters[0] instanceof Int16Array) {
+                elevationData = new Float32Array(rasters[0]);
+            } else {
+                elevationData = new Float32Array(rasters[0]);
+            }
+
+            processElevationData(elevationData, width, height);
+        }
+
+        // 处理高程数据并创建地形网格
+        function processElevationData(data, width, height) {
+            if (terrainMesh) {
+                scene.remove(terrainMesh);
+                terrainMesh.geometry.dispose();
+                terrainMesh.material.dispose();
+            }
+
+            const geometry = new THREE.PlaneGeometry(5, 5, width - 1, height - 1);
+
+            const vertices = geometry.attributes.position.array;
+            const maxElevation = Math.max(...data);
+            const minElevation = Math.min(...data.filter(num => num !== 0))
+
+            //ele全部相同
+            if (maxElevation == minElevation) {
+                for (let i = 0; i < data.length; i++) {
+                    geometry.attributes.position.setZ(i, 0.5);
+                }
+            } else {
+                for (let i = 0; i < data.length; i++) {
+                    geometry.attributes.position.setZ(i, (data[i] - minElevation) / (maxElevation - minElevation));
+                }
+            }
+            const originalIndices = Array.from(geometry.index.array)
+            let newIndices;
+            if (data[0] == 0) {
+                geometry.setAttribute('elevation', new THREE.BufferAttribute(data, 1));
+                //抛弃第1、2个三角形
+                newIndices = originalIndices.slice(6)
+                geometry.setIndex(newIndices);
+                geometry.computeVertexNormals();
+            } else if (data.at(-1) == 0) {
+                geometry.setAttribute('elevation', new THREE.BufferAttribute(data, 1));
+                //抛弃最后2个三角形
+                newIndices = originalIndices.slice(0, -6);
+                geometry.setIndex(newIndices);
+                geometry.computeVertexNormals();
+            } else {
+                geometry.setAttribute('elevation', new THREE.BufferAttribute(data, 1));
+                geometry.computeVertexNormals();
+            }
+
+            // 创建基于高程的颜色
+            const colors = [];
+            let elevation;
+            for (let i = 0, j = 0; i < vertices.length; i += 3, j++) {
+                if (maxElevation == minElevation) {
+                    elevation = 0.5
+                } else {
+                    elevation = (data[j] - minElevation) / (maxElevation - minElevation);
+                }
+                const color = new THREE.Color();
+                if (data[j] == 0) {
+                    color.setRGB(0, 0, 0);
+                    colors.push(color.r, color.g, color.b);
+                } else {
+                    color.setHSL(0.7 * (1 - elevation), 1, 0.5);
+                    colors.push(color.r, color.g, color.b);
+                };
+            }
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            //自定义材质
+            const customShaderMaterial = new THREE.ShaderMaterial({
+                vertexShader: vs5,
+                fragmentShader: fs5,
+                vertexColors: true,
+                transparent: true,
+                side: THREE.DoubleSide,
+                wireframe: true,
+            });
+
+            terrainMesh = new THREE.Mesh(geometry, customShaderMaterial);
+            terrainMesh.rotation.x = -Math.PI / 2;
+            scene.add(terrainMesh);
+
+            camera.position.set(0, maxElevation, 3);
+            controls.reset();
+        }
+
+        $('#fileInput').on('change', HD1)
+
+        // 响应窗口大小变化
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

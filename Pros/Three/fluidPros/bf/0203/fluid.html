@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>textData_shader方式处理dom</title>
+    <script src="/public/js/three.min.js"></script>
+    <script src="/public/js/OrbitControls.js"></script>
+    <script src="/public/js/geotiff.js"></script>
+    <script src="./s2.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #050a10;
+        }
+    </style>
+</head>
+
+<body>
+
+    <script type="module">
+        // ========================================
+        // 核心配置
+        // ========================================
+        const TERRAIN_SIZE = 10;     // 地形尺寸
+        const HEIGHT_SCALE = 2.0;    // 高度缩放
+
+        // 物理参数 - 平衡质量感与流动性
+        const params = {
+            gravity: 15.0,       // 较大重力保持质量感
+            pipeArea: 0.35,      // 适中管道面积，保持流动性
+            pipeLength: 0.8,     // 适中管道长度
+            dt: 0.005,           // 适中时间步长
+            injectAmount: 2.6,
+            injectRadius: 0.01,
+            evaporation: 0.0000  // 每一小步蒸发的比例
+        };
+
+        // ========================================
+        // 场景初始化
+        // ========================================
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(4, 4, 4);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // ========================================
+        // 1. 加载地形数据
+        // ========================================
+        const file = '/Public/dem/terrain8.tif';
+        const res = await fetch(file);
+        const arrayBuffer = await res.arrayBuffer();
+        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+        const image = await tiff.getImage();
+        const rasters = await image.readRasters();
+        const tiffWidth = image.getWidth();
+        const tiffHeight = image.getHeight();
+        const elevationData = new Float32Array(rasters[0]);
+
+        // 计算高度范围
+        let minElevation = Infinity, maxElevation = -Infinity;
+        for (let i = 0; i < elevationData.length; i++) {
+            const val = elevationData[i];
+            if (val !== 0) {
+                minElevation = Math.min(minElevation, val);
+                maxElevation = Math.max(maxElevation, val);
+            }
+        }
+
+        // 创建归一化高度数据
+        const heightData = new Float32Array(tiffWidth * tiffHeight);
+        for (let i = 0; i < elevationData.length; i++) {
+            heightData[i] = (elevationData[i] - minElevation) / (maxElevation - minElevation);
+        }
+
+        // 创建高度纹理 (原始分辨率) - 使用 RGBA 提高兼容性
+        const heightDataRGBA = new Float32Array(tiffWidth * tiffHeight * 4);
+        for (let i = 0; i < heightData.length; i++) {
+            heightDataRGBA[i * 4] = heightData[i];
+        }
+        const heightTexture = new THREE.DataTexture(heightDataRGBA, tiffWidth, tiffHeight, THREE.RGBAFormat, THREE.FloatType);
+        heightTexture.needsUpdate = true;
+        heightTexture.minFilter = THREE.LinearFilter;
+        heightTexture.magFilter = THREE.LinearFilter;
+
+        // 加载 DOM (正射影像)
+        const domFile = '/Public/dom/1.tif';
+        const domRes = await fetch(domFile);
+        const domArrayBuffer = await domRes.arrayBuffer();
+        const domTiff = await GeoTIFF.fromArrayBuffer(domArrayBuffer);
+        const domImage = await domTiff.getImage();
+        const domRasters = await domImage.readRasters();
+        const dWidth = domImage.getWidth();
+        const dHeight = domImage.getHeight();
+        const bands = domRasters.length;
+        const domData = new Uint8Array(dWidth * dHeight * 4);
+        for (let i = 0; i < dWidth * dHeight; i++) {
+            if (bands >= 3) {
+                domData[i * 4 + 0] = domRasters[0][i];
+                domData[i * 4 + 1] = domRasters[1][i];
+                domData[i * 4 + 2] = domRasters[2][i];
+                domData[i * 4 + 3] = bands >= 4 ? domRasters[3][i] : 255;
+            } else {
+                const val = domRasters[0][i];
+                domData[i * 4 + 0] = val;
+                domData[i * 4 + 1] = val;
+                domData[i * 4 + 2] = val;
+                domData[i * 4 + 3] = 255;
+            }
+        }
+        const domTexture = new THREE.DataTexture(domData, dWidth, dHeight, THREE.RGBAFormat, THREE.UnsignedByteType);
+        domTexture.minFilter = THREE.LinearFilter;
+        domTexture.magFilter = THREE.LinearFilter;
+        domTexture.needsUpdate = true;
+
+        // 创建模拟用的高度纹理 (全分辨率)
+        const simHeightData = new Float32Array(tiffWidth * tiffHeight * 4);
+        simHeightData.set(heightDataRGBA);
+        const simHeightTexture = new THREE.DataTexture(simHeightData, tiffWidth, tiffHeight, THREE.RGBAFormat, THREE.FloatType);
+        simHeightTexture.needsUpdate = true;
+        simHeightTexture.minFilter = THREE.NearestFilter;
+        simHeightTexture.magFilter = THREE.NearestFilter;
+
+        // ========================================
+        // 光照 (必须在材质使用前定义)
+        // ========================================
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 5);
+        scene.add(dirLight);
+
+        // ========================================
+        // 3. 创建 GPGPU 渲染目标 (Ping-Pong 双缓冲)
+        // ========================================
+        function createRenderTarget(useLinear = false) {
+            return new THREE.WebGLRenderTarget(tiffWidth, tiffHeight, {
+                minFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                magFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                format: THREE.RGBAFormat,
+                type: THREE.FloatType,
+                depthBuffer: false,
+                stencilBuffer: false
+            });
+        }
+
+        // 水深场双缓冲 - 使用线性过滤以获得平滑边缘
+        let rtWater = [createRenderTarget(true), createRenderTarget(true)];
+        // 通量场双缓冲 - 保持最近邻过滤以确保模拟精度
+        let rtFlux = [createRenderTarget(false), createRenderTarget(false)];
+        // 污染标记双缓冲 - 使用线性过滤以获得平滑边缘
+        let rtPollution = [createRenderTarget(true), createRenderTarget(true)];
+
+        let currentBuffer = 0;
+
+        // 初始化水深和通量为0
+        const initData = new Float32Array(tiffWidth * tiffHeight * 4);
+        const initTexture = new THREE.DataTexture(initData, tiffWidth, tiffHeight, THREE.RGBAFormat, THREE.FloatType);
+        initTexture.needsUpdate = true;
+
+        // 初始化污染纹理为0
+        const clearColor = new THREE.Color(0, 0, 0);
+        renderer.setClearColor(clearColor, 0);
+        renderer.setRenderTarget(rtPollution[0]);
+        renderer.clear();
+        renderer.setRenderTarget(rtPollution[1]);
+        renderer.clear();
+        renderer.setRenderTarget(null);
+
+        // GPGPU 场景和相机
+        const gpgpuScene = new THREE.Scene();
+        const gpgpuCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const gpgpuQuad = new THREE.PlaneGeometry(2, 2);
+
+        // ========================================
+        // 4. 获取着色器与材质工厂
+        // ========================================
+        const {
+            createFluxShader,
+            createWaterShader,
+            createWaterRenderMaterial,
+            createGPGPUMaterial,
+            createPollutionShader
+        } = window.FluidShaders;
+
+        // ========================================
+        // 2. 创建可视地形网格
+        // ========================================
+        const terrainAspect = tiffHeight / tiffWidth;
+        const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE * terrainAspect, tiffWidth - 1, tiffHeight - 1);
+
+        // 创建自定义地形材质以显示污染效果
+        const terrainMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uPollutionTex: { value: null },
+                uWaterTex: { value: null },
+                uTerrainTex: { value: domTexture }, // 使用加载的 DOM 纹理
+                uHasTerrainTex: { value: 1.0 },     // 标记已加载纹理
+                uTerrainColor: { value: new THREE.Color(0x3a5f3a) },  // 正常地形颜色（绿色）
+                uPollutionColor: { value: new THREE.Color(0x8b4513) }, // 污染颜色（鲜明的鞘棕色）
+                uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.5) },
+                uAmbient: { value: 0.4 },
+                uDiffuse: { value: 0.6 }
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                varying vec2 vUv;
+                
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uPollutionTex;
+                uniform sampler2D uWaterTex;
+                uniform sampler2D uTerrainTex;
+                uniform float uHasTerrainTex;
+                uniform vec3 uTerrainColor;
+                uniform vec3 uPollutionColor;
+                uniform vec3 uLightDir;
+                uniform float uAmbient;
+                uniform float uDiffuse;
+                
+                varying vec3 vNormal;
+                varying vec2 vUv;
+                
+                void main() {
+                    // 翻转UV的Y坐标以匹配纹理方向
+                    vec2 flippedUV = vec2(vUv.x, 1.0 - vUv.y);
+                    
+                    // 获取基础地形颜色
+                    vec3 baseColor = uTerrainColor;
+                    if (uHasTerrainTex > 0.5) {
+                        baseColor = texture2D(uTerrainTex, flippedUV).rgb;
+                    }
+                    
+                    // 直接读取污染强度（线性过滤自动平滑）
+                    float pollutionAmount = texture2D(uPollutionTex, flippedUV).r;
+                    
+                    // 使用非常宽的平滑步函数范围以获得柔和的边缘
+                    float pollutionStrength = smoothstep(0.002, 0.15, pollutionAmount);
+                    
+                    // 混合基础颜色和污染颜色
+                    vec3 finalColor = mix(baseColor, uPollutionColor, pollutionStrength * 0.7);
+                    
+                    // 简单光照计算
+                    vec3 lightDir = normalize(uLightDir);
+                    float diff = max(dot(vNormal, lightDir), 0.0);
+                    vec3 color = finalColor * (uAmbient + uDiffuse * diff);
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        const posAttr = terrainGeo.attributes.position.array;
+        for (let i = 0; i < heightData.length; i++) {
+            posAttr[i * 3 + 2] = heightData[i] * HEIGHT_SCALE;
+        }
+        terrainGeo.computeVertexNormals();
+
+        const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+        terrainMesh.rotation.x = -Math.PI / 2;
+        // 初始化地形材质的污染纹理和水深纹理
+        terrainMat.uniforms.uPollutionTex.value = rtPollution[0].texture;
+        terrainMat.uniforms.uWaterTex.value = rtWater[0].texture;
+        scene.add(terrainMesh);
+
+        // ========================================
+        // 4. 创建计算材质
+        // ========================================
+
+        // 通量计算材质
+        const fluxShader = createFluxShader();
+        const fluxUniforms = {
+            uWaterTex: { value: null },
+            uHeightTex: { value: simHeightTexture },
+            uFluxTex: { value: null },
+            uResolution: { value: new THREE.Vector2(tiffWidth, tiffHeight) },
+            uDt: { value: params.dt },
+            uGravity: { value: params.gravity },
+            uPipeArea: { value: params.pipeArea },
+            uPipeLength: { value: params.pipeLength }
+        };
+        const fluxMaterial = createGPGPUMaterial(fluxShader, fluxUniforms);
+        const fluxMesh = new THREE.Mesh(gpgpuQuad, fluxMaterial);
+
+        // 水深更新材质
+        const waterShader = createWaterShader();
+        const waterUniforms = {
+            uWaterTex: { value: null },
+            uFluxTex: { value: null },
+            uHeightTex: { value: simHeightTexture },
+            uResolution: { value: new THREE.Vector2(tiffWidth, tiffHeight) },
+            uDt: { value: params.dt },
+            uPipeLength: { value: params.pipeLength },
+            uInjectActive: { value: false },
+            uInjectPos: { value: new THREE.Vector2(-1, -1) },
+            uInjectRadius: { value: params.injectRadius },
+            uInjectAmount: { value: params.injectAmount },
+            uEvaporation: { value: 1.0 - params.evaporation },
+            uSlopeDir: { value: new THREE.Vector2(0, 0) }
+        };
+        const waterMaterial = createGPGPUMaterial(waterShader, waterUniforms);
+        const waterMesh = new THREE.Mesh(gpgpuQuad.clone(), waterMaterial);
+
+        // 污染标记材质
+        const pollutionShader = createPollutionShader();
+        const pollutionUniforms = {
+            uPollutionTex: { value: null },
+            uWaterTex: { value: null },
+            uPollutionRate: { value: 0.3 },  // 大幅增加污染扩散速率
+            uDecayRate: { value: 0.00001 }   // 降低衰减速率，让污染更持久
+        };
+        const pollutionMaterial = createGPGPUMaterial(pollutionShader, pollutionUniforms);
+        const pollutionMesh = new THREE.Mesh(gpgpuQuad.clone(), pollutionMaterial);
+
+        // ========================================
+        // 5. 创建水面渲染网格
+        // ========================================
+        // 水面网格使用更高分辨率以获得平滑边缘
+        const waterGeo = new THREE.PlaneGeometry(
+            TERRAIN_SIZE,
+            TERRAIN_SIZE * terrainAspect,
+            tiffWidth * 2 - 1,
+            tiffHeight * 2 - 1
+        );
+        const waterRenderMat = createWaterRenderMaterial();
+        waterRenderMat.uniforms.uHeightTex.value = heightTexture;
+        waterRenderMat.uniforms.uHeightScale.value = HEIGHT_SCALE;
+        waterRenderMat.uniforms.uMaxDepth.value = 0.05; // 再次大幅调低，让薄水层看起来更明显（更实）
+        waterRenderMat.uniforms.uResolution.value.set(tiffWidth, tiffHeight);
+
+        // --- Lighting Update ---
+        waterRenderMat.uniforms.uTerrainSize.value = TERRAIN_SIZE;
+        waterRenderMat.uniforms.uLightDir.value.copy(dirLight.position).normalize();
+        waterRenderMat.uniforms.uSpecularColor.value.setHex(0xffffff);
+        waterRenderMat.uniforms.uShininess.value = 100.0;
+
+        const waterSurface = new THREE.Mesh(waterGeo, waterRenderMat);
+        waterSurface.rotation.x = -Math.PI / 2;
+        waterSurface.position.y = 0.001; // 稍微偏移防止 z-fighting
+        scene.add(waterSurface);
+
+        // ========================================
+        // 6. 射线检测和点击交互
+        // ========================================
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let isInjecting = false;
+        let injectUV = new THREE.Vector2();
+
+        function onMouseDown(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrainMesh);
+
+            if (intersects.length > 0) {
+                // 重置所有流体和污染纹理
+                resetSimulation();
+
+                const uv = intersects[0].uv;
+                // 翻转 V 坐标以匹配模拟纹理方向
+                injectUV.set(uv.x, 1.0 - uv.y);
+
+                // 计算地形梯度方向
+                const slopeDir = calculateSlopeDirection(uv.x, 1.0 - uv.y);
+                waterUniforms.uSlopeDir.value.copy(slopeDir);
+
+                isInjecting = true;
+                waterUniforms.uInjectActive.value = true;
+                waterUniforms.uInjectPos.value.copy(injectUV);
+            }
+        }
+
+        function onMouseUp() {
+            isInjecting = false;
+            waterUniforms.uInjectActive.value = false;
+        }
+
+        function onMouseMove(event) {
+            if (!isInjecting) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrainMesh);
+
+            if (intersects.length > 0) {
+                const uv = intersects[0].uv;
+                // 翻转 V 坐标以匹配模拟纹理方向
+                injectUV.set(uv.x, 1.0 - uv.y);
+                waterUniforms.uInjectPos.value.copy(injectUV);
+
+                const slopeDir = calculateSlopeDirection(uv.x, 1.0 - uv.y);
+                waterUniforms.uSlopeDir.value.copy(slopeDir);
+            }
+        }
+
+        // 计算地形梯度方向 (归一化)
+        function calculateSlopeDirection(u, v) {
+            const texelX = 1 / tiffWidth;
+            const texelY = 1 / tiffHeight;
+
+            const ix = Math.floor(u * tiffWidth);
+            const iy = Math.floor(v * tiffHeight);
+
+            const getHeight = (x, y) => {
+                x = Math.max(0, Math.min(tiffWidth - 1, x));
+                y = Math.max(0, Math.min(tiffHeight - 1, y));
+                // 由于改用了 RGBA 格式，这里索引需要 * 4 并取第一个通道
+                return simHeightData[(y * tiffWidth + x) * 4];
+            };
+
+            const hC = getHeight(ix, iy);
+            const hR = getHeight(ix + 1, iy);
+            const hL = getHeight(ix - 1, iy);
+            const hT = getHeight(ix, iy + 1);
+            const hB = getHeight(ix, iy - 1);
+
+            // 梯度指向高处，我们取反得到下坡方向
+            // BUG FIX: 之前除以 texelX/Y 会导致长宽比不对时方向错误 (例如 1/W 被变成了 *W)
+            // 正确的做法是：物理空间的一个单位步长，对应 UV 空间 1/W (或 1/H)
+            // 所以分量应该乘以 texelX/Y (即除以 W/H)
+            const gradX = -(hR - hL) * texelX;
+            const gradY = -(hT - hB) * texelY;
+
+            const len = Math.sqrt(gradX * gradX + gradY * gradY);
+            // 增加一点容差防止除零
+            if (len > 1e-6) {
+                return new THREE.Vector2(gradX / len, gradY / len);
+            }
+            return new THREE.Vector2(0, 0);
+        }
+
+        renderer.domElement.addEventListener('mousedown', onMouseDown);
+        renderer.domElement.addEventListener('mouseup', onMouseUp);
+        renderer.domElement.addEventListener('mousemove', onMouseMove);
+        renderer.domElement.addEventListener('mouseleave', onMouseUp);
+
+
+        function resetSimulation() {
+            const clearColor = new THREE.Color(0, 0, 0);
+            renderer.setClearColor(clearColor, 0);
+
+            // 清除所有水深缓冲
+            renderer.setRenderTarget(rtWater[0]);
+            renderer.clear();
+            renderer.setRenderTarget(rtWater[1]);
+            renderer.clear();
+
+            // 清除所有通量缓冲
+            renderer.setRenderTarget(rtFlux[0]);
+            renderer.clear();
+            renderer.setRenderTarget(rtFlux[1]);
+            renderer.clear();
+
+            // 清除所有污染缓冲
+            renderer.setRenderTarget(rtPollution[0]);
+            renderer.clear();
+            renderer.setRenderTarget(rtPollution[1]);
+            renderer.clear();
+
+            // 重置主渲染器设置
+            renderer.setRenderTarget(null);
+        }
+
+        // ========================================
+        // 8. 模拟步进函数
+        // ========================================
+        function simulationStep() {
+            const curr = currentBuffer;
+            const next = 1 - curr;
+
+            // 清空场景
+            gpgpuScene.clear();
+
+            // 步骤1: 计算通量
+            gpgpuScene.add(fluxMesh);
+
+            fluxUniforms.uWaterTex.value = rtWater[curr].texture;
+            fluxUniforms.uFluxTex.value = rtFlux[curr].texture;
+
+            renderer.setRenderTarget(rtFlux[next]);
+            renderer.render(gpgpuScene, gpgpuCamera);
+
+            // 步骤2: 更新水深
+            gpgpuScene.clear();
+            gpgpuScene.add(waterMesh);
+
+            waterUniforms.uWaterTex.value = rtWater[curr].texture;
+            waterUniforms.uFluxTex.value = rtFlux[next].texture;
+
+            renderer.setRenderTarget(rtWater[next]);
+            renderer.render(gpgpuScene, gpgpuCamera);
+
+            // 步骤3: 更新污染标记
+            gpgpuScene.clear();
+            gpgpuScene.add(pollutionMesh);
+
+            pollutionUniforms.uPollutionTex.value = rtPollution[curr].texture;
+            pollutionUniforms.uWaterTex.value = rtWater[next].texture;
+
+            renderer.setRenderTarget(rtPollution[next]);
+            renderer.render(gpgpuScene, gpgpuCamera);
+
+            // 步骤4: 交换缓冲
+            currentBuffer = next;
+
+            // 更新渲染材质
+            waterRenderMat.uniforms.uWaterTex.value = rtWater[currentBuffer].texture;
+            terrainMat.uniforms.uPollutionTex.value = rtPollution[currentBuffer].texture;
+            terrainMat.uniforms.uWaterTex.value = rtWater[currentBuffer].texture;
+        }
+
+
+        // ========================================
+        // 9. 动画循环
+        // ========================================
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 执行多次模拟步进以提高稳定性（增加子步数配合较小的时间步长）
+            const subSteps = 5;
+            for (let i = 0; i < subSteps; i++) {
+                simulationStep();
+            }
+
+            controls.update();
+
+            // 重置渲染目标并渲染主场景
+            renderer.setRenderTarget(null);
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // ========================================
+        // 10. 窗口调整
+        // ========================================
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

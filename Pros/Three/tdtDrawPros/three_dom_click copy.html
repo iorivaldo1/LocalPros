@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .three_container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 600px;
+            height: 600px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .close_con_btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+
+        .render_btn {
+            position: absolute;
+            top: 20px;
+            right: 50px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+
+    <div class="three_container" id="threeCon1">
+        <span>DEM来源:FABDEM DOM来源:天地图</span>
+        <button class="render_btn" id="reloadScene1">R</button>
+        <button class="close_con_btn" id="clo_con1">X</button>
+    </div>
+
+    <script>
+        var maxElevation = -Infinity;
+        var minElevation = -Infinity;
+        var demMeshList = []
+        var meshPointNameList = []
+        var meshBridgeLabelList = []
+        var tdt_event;
+        var bridgeList = []
+        var qlIconUrl = "/Public/imgs/bridge.png";
+        var icon = new T.Icon({
+            iconUrl: qlIconUrl, //请求图标图片的URL
+            iconSize: new T.Point(15, 15), //图标可视区域的大小。
+            iconAnchor: new T.Point(7.5, 7.5), //图标的定位锚点
+        });
+        $.get('http://localhost:8080/localGEO/getYABridge').then(res => {
+            res.forEach(b => {
+                const b_jd = parseFloat(b.geometry.split(' ')[0].split('(')[1]).toFixed(5)
+                const b_wd = parseFloat(b.geometry.split(' ')[1].replace(')', '')).toFixed(5)
+                bridgeList.push([b_jd, b_wd, b.bridgeName])
+                var bridge_pos_tdt = new T.LngLat(b_jd, b_wd);
+                var marker = new T.Marker(bridge_pos_tdt, {
+                    icon: icon,
+                });
+                map.addOverLay(marker);
+            })
+        })
+
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')//DEM范围框
+        var map = new T.Map('map', { tileSize: 512 });
+        //关闭map手形状，保证精确点击
+        map.getContainer().style.cursor = 'default';
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera);
+        $('#getDem').on('click', HD1)
+
+        function HD1() {
+            $('#threeCon1').css('visibility', 'hidden')
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                tdt_event = e
+
+                const x_range = e.currentBounds.getNorthEast().lng - e.currentBounds.getSouthWest().lng
+                const y_range = e.currentBounds.getNorthEast().lat - e.currentBounds.getSouthWest().lat
+                if (x_range >= 0.08 || y_range >= 0.08) {
+                    layer.alert('框选范围过大！请重新选择范围');
+                    recTool.clear();
+                    return;
+                }
+                var loadIndex = layer.msg('数据加载中', {
+                    icon: 16,
+                    shade: 0.01,
+                    time: false
+                });
+                var FABDEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_SC_FABDEM', e)
+                initThree_TDT(scene1, control1, renderer1, FABDEM_WCS_UR, e, bridgeList, loadIndex)
+            })
+        }
+
+        $('#clo_con1').on('click', function () {
+            var ex_mesh = getMeshByName(scene1, 'mesh_cop')
+            if (ex_mesh) {
+                scene1.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#threeCon1').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera.position.set(0, 2, 3.5);
+        })
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        function ThreeDomClickHD(event) {
+            const canvas = renderer1.domElement
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            mouse.x = (x / canvas.clientWidth) * 2 - 1;
+            mouse.y = - (y / canvas.clientHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera)
+            const intersects = raycaster.intersectObjects(demMeshList);
+            if (intersects.length > 0) {
+
+                //计算dem_mesh宽高
+                const bbox = new THREE.Box3().setFromObject(demMeshList[0]);
+                const dem_width = bbox.max.x - bbox.min.x
+                const dem_height = bbox.max.z - bbox.min.z
+
+                //计算geo宽高
+                const minX = tdt_event.currentBounds.getSouthWest().lng
+                const minY = tdt_event.currentBounds.getSouthWest().lat
+                const maxX = tdt_event.currentBounds.getNorthEast().lng
+                const maxY = tdt_event.currentBounds.getNorthEast().lat
+                const geo_width = maxX - minX;
+                const geo_height = maxY - minY;
+
+                //canvas点_中心坐标系
+                var canvas_x = intersects[0].point.x
+                var canvas_z = intersects[0].point.z
+                //canvas点_左上坐标系
+                const p_x = canvas_x + (dem_width / 2)
+                const p_y = (dem_height / 2) - canvas_z
+                //geo点
+                const p_x_geo = minX + (p_x * geo_width) / dem_width
+                const p_y_geo = minY + (p_y * geo_height) / dem_height
+
+                console.log(p_x_geo, p_y_geo)
+            }
+        }
+
+        $('#threeCon1').on('mouseenter', function () {
+            $(this).on('click', ThreeDomClickHD)
+        })
+
+        $('#threeCon1').on('mouseleave', function () {
+            $(this).off('click', ThreeDomClickHD)
+        })
+
+
+    </script>
+</body>
+
+</html>

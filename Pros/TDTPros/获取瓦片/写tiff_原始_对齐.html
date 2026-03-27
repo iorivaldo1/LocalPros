@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>获取tiff</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+            /* width:500px; */
+            /* height:500px */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas"></canvas>
+    <button id="getDem">T</button>
+
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 18);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', async (e) => {
+                const zoom = 18
+                const minX = e.currentBounds.getSouthWest().lng
+                const minY = e.currentBounds.getSouthWest().lat
+                const maxX = e.currentBounds.getNorthEast().lng
+                const maxY = e.currentBounds.getNorthEast().lat
+
+                const nw = lngLatToTile(minX, maxY, zoom);  // 西北角
+                const ne = lngLatToTile(maxX, maxY, zoom);  // 东北角
+                const sw = lngLatToTile(minX, minY, zoom);  // 西南角
+                const se = lngLatToTile(maxX, minY, zoom);
+                const minCol = Math.min(nw[0], sw[0]);
+                const maxCol = Math.max(ne[0], se[0]);
+                const minRow = Math.min(ne[1], se[1]);  // 注意：行号从上到下增加
+                const maxRow = Math.max(nw[1], sw[1]);
+
+                const colCount = maxCol - minCol + 1;
+                const rowCount = maxRow - minRow + 1;
+                const totalTiles = colCount * rowCount;
+
+                const tiles = [];
+                for (let col = minCol; col <= maxCol; col++) {
+                    for (let row = minRow; row <= maxRow; row++) {
+                        tiles.push({
+                            url: getTileWMTSUrlIMG(col, row, zoom),
+                            col: col,
+                            row: row,
+                        });
+                    }
+                }
+
+                const loadPromises = tiles.map(tile =>
+                    new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => resolve(img);
+                        img.src = tile.url;
+                    })
+                );
+
+                const images = await Promise.all(loadPromises);
+
+                //stitchTilesWithPosition
+                const tileSize = 256
+                const canvasWidth = (maxCol - minCol + 1) * tileSize;
+                const canvasHeight = (maxRow - minRow + 1) * tileSize;
+                //原始canvas,不显示,用于绘制imgs
+                const canvas = $('#canvas')[0]
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+                                ctx.fillStyle = 'transparent';
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+                //计算第一个瓦片左上角坐标
+                const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom);
+                //计算最后一个瓦片右下角坐标,+1保证为右下角(否则为最后一个瓦片的左上角坐标)
+                const [lastTile_se_x, lastTile_se_y] = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+                //在第一个canvas中绘制img
+                images.forEach((img, index) => {
+                    const tile = tiles[index];
+                    const x = (tile.col - minCol) * tileSize;
+                    const y = (tile.row - minRow) * tileSize;
+                    //canvas会自动转换为4通道格式
+                    ctx.drawImage(img, x, y, tileSize, tileSize);
+                });
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const { data, width, height } = imageData;
+                const raster = new Uint8Array(width * height * 3); // 只需要 RGB
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        //canvas的imgData是4通道
+                        const srcIndex = (y * width + x) * 4;
+                        //写出的img只要3通道
+                        const dstIndex = (y * width + x) * 3;
+                        raster[dstIndex] = data[srcIndex];     // R
+                        raster[dstIndex + 1] = data[srcIndex + 1]; // G
+                        raster[dstIndex + 2] = data[srcIndex + 2]; // B
+                    }
+                }
+                const arrayBuffer = await GeoTIFF.writeArrayBuffer(raster, {
+                    width: width,
+                    height: height,
+                    //坐标系信息
+                    GTModelTypeGeoKey: 2,        // 地理坐标系
+                    GeographicTypeGeoKey: 4326,  // WGS 84
+                    //像元大小
+                    ModelPixelScale: [(lastTile_se_x - firstTile_nw_x) / width, (firstTile_nw_y - lastTile_se_y) / height, 0],
+                    //左上角坐标
+                    ModelTiepoint: [0, 0, 0, firstTile_nw_x, firstTile_nw_y, 0],
+                });
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: 'map.tif',
+                    types: [{
+                        description: 'TIFF',
+                        accept: { 'image/tiff': ['.tif', '.tiff'] }
+                    }]
+                });
+
+                const writable = await handle.createWritable();
+                await writable.write(new Blob([arrayBuffer], { type: 'image/tiff' }));
+                await writable.close();
+                // await recTool.clear()
+            })
+
+
+        }
+
+        function tileToLngLat(tileCol, tileRow, zoom) {
+            const n = Math.pow(2, zoom);
+            const lng = tileCol / n * 360 - 180;
+            const latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * tileRow / n)));
+            const lat = latRad * 180 / Math.PI;
+
+            return [lng, lat];
+        }
+
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360;
+            const y = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
+                1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2;
+            const tileCount = Math.pow(2, zoom);
+            const tileCol = Math.floor(x * tileCount);
+            const tileRow = Math.floor(y * tileCount);
+
+            return [tileCol, tileRow];
+        }
+
+        //从天地图获取WMTS切片(img)
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8)
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`
+            const wmtsUrl =
+                baseUrl +
+                'REQUEST=GetTile' +
+                '&SERVICE=WMTS' +
+                '&VERSION=1.0.0' +
+                '&LAYER=img' +
+                '&STYLE=default' +
+                '&TILEMATRIXSET=w' +
+                '&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+                '&TILECOL=' +
+                tileCol +
+                '&TILEROW=' +
+                tileRow +
+                '&TILEMATRIX=' +
+                zoom
+
+            return wmtsUrl
+        }
+
+
+    </script>
+</body>
+
+</html>

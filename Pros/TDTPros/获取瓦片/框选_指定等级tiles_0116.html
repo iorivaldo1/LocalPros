@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Test</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #ocrBtn {
+            position: absolute;
+            bottom: 100px;
+            left: 80px;
+            z-index: 450;
+            width: 80px;
+            height: 30px;
+        }
+
+        #ocrMode {
+            position: absolute;
+            bottom: 60px;
+            left: 80px;
+            z-index: 450;
+            width: 100px;
+            height: 25px;
+        }
+
+        #ocrResult {
+            position: absolute;
+            top: 50px;
+            right: 50px;
+            z-index: 450;
+            width: 300px;
+            max-height: 500px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        #ocrProgress {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 460;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        #canvas1 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+            /* width:500px; */
+            /* height:500px */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <button id="getDem">T</button>
+    <button id="ocrBtn">识别文字</button>
+    <select id="ocrMode">
+        <option value="dark">黑色文字</option>
+        <option value="light" selected>浅色文字</option>
+        <option value="auto">智能模式</option>
+    </select>
+    <div id="ocrResult"></div>
+    <div id="ocrProgress">识别中...</div>
+
+    <script>
+        var map = new T.Map('map');
+        map.centerAndZoom(new T.LngLat(103, 30), 18);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+        $('#ocrBtn').on('click', recognizeText)
+
+        async function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+
+            const bbox = await getBbox()
+            const zoom = map.getZoom();
+            const tileSize = 256;
+
+            var minX = bbox.getSouthWest().lng
+            var minY = bbox.getSouthWest().lat
+            var maxX = bbox.getNorthEast().lng
+            var maxY = bbox.getNorthEast().lat
+
+            const nw = lngLatToTile(minX, maxY, zoom);  // 西北角
+            const ne = lngLatToTile(maxX, maxY, zoom);  // 东北角
+            const sw = lngLatToTile(minX, minY, zoom);  // 西南角
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);  // 注意：行号从上到下增加
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({
+                        url: getTileWMTSUrlCIA(col, row, zoom),
+                        col: col,
+                        row: row,
+                    });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            const canvas1 = $('#canvas1')[0];
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'gray';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            const images = await getAllImages(tiles)
+            images.forEach((img, index) => {
+                const tile = tiles[index];
+                const x = (tile.col - bounds.minCol) * tileSize;
+                const y = (tile.row - bounds.minRow) * tileSize;
+                ctx1.drawImage(img, x, y, tileSize, tileSize);
+            });
+        }
+
+        async function recognizeText() {
+            const canvas1 = $('#canvas1')[0];
+                            
+            if (!canvas1.width || !canvas1.height) {
+                alert('请先获取地图瓦片！');
+                return;
+            }
+        
+            const mode = $('#ocrMode').val();
+            console.log('Canvas尺寸:', canvas1.width, 'x', canvas1.height);
+            console.log('识别模式:', mode);
+                
+            // 显示进度条
+            $('#ocrProgress').show();
+            $('#ocrResult').hide();
+                
+            try {
+                console.log('开始OCR识别...');
+                console.log('使用语言: chi_sim (仅中文简体)');
+                
+                // 图像预处理：放大5倍 + 二值化增强
+                const scaleFactor = 5;
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = canvas1.width * scaleFactor;
+                tempCanvas.height = canvas1.height * scaleFactor;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // 使用高质量缩放
+                tempCtx.imageSmoothingEnabled = false;  // 禁用平滑以保留锐利边缘
+                tempCtx.drawImage(canvas1, 0, 0, tempCanvas.width, tempCanvas.height);
+                
+                // 增强对比度和二值化
+                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const data = imageData.data;
+                
+                let threshold = 128;  // 默认阈值
+                
+                if (mode === 'auto') {
+                    // 智能模式：计算平均灰度
+                    let totalGray = 0;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                        totalGray += gray;
+                    }
+                    const avgGray = totalGray / (data.length / 4);
+                    threshold = avgGray * 0.85;
+                    console.log('智能模式 - 平均灰度:', avgGray.toFixed(2), '阈值:', threshold.toFixed(2));
+                } else if (mode === 'light') {
+                    // 浅色文字模式：提高阈值，把浅色变白、深色变黑
+                    threshold = 160;
+                    console.log('浅色文字模式 - 阈值:', threshold);
+                } else {
+                    // 黑色文字模式
+                    threshold = 128;
+                    console.log('黑色文字模式 - 阈值:', threshold);
+                }
+                
+                // 应用二值化
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    
+                    // 灰度值
+                    let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                    
+                    // 根据模式应用不同的阈值
+                    if (mode === 'light') {
+                        // 浅色文字：灰度>阈值变黑，<阈值变白
+                        gray = gray > threshold ? 0 : 255;
+                    } else {
+                        // 黑色文字/智能模式：灰度<阈值变黑，>阈值变白
+                        gray = gray < threshold ? 0 : 255;
+                    }
+                    
+                    data[i] = gray;
+                    data[i + 1] = gray;
+                    data[i + 2] = gray;
+                }
+                
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                console.log('预处理后尺寸:', tempCanvas.width, 'x', tempCanvas.height);
+                console.log('预处理图像预览:', tempCanvas.toDataURL());
+                                
+                const { data: { text, lines, words, confidence } } = await Tesseract.recognize(
+                    tempCanvas,
+                    'chi_sim',  // 只用中文简体，提高识别率
+                    {
+                        tessedit_char_whitelist: '',  // 不限制字符
+                        tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+                        logger: m => {
+                            console.log('OCR状态:', m);
+                            if (m.status === 'recognizing text') {
+                                const progress = (m.progress * 100).toFixed(2);
+                                $('#ocrProgress').text(`识别中... ${progress}%`);
+                            } else if (m.status === 'loading tesseract core') {
+                                $('#ocrProgress').text('加载OCR引擎...');
+                            } else if (m.status === 'loading language traineddata') {
+                                $('#ocrProgress').text('加载中文语言包...');
+                            } else if (m.status === 'initializing tesseract') {
+                                $('#ocrProgress').text('初始化OCR引擎...');
+                            } else if (m.status === 'initialized tesseract') {
+                                $('#ocrProgress').text('准备识别...');
+                            }
+                        }
+                    }
+                );
+                
+                console.log('识别完成，原始文本:', text);
+                console.log('识别到的行数:', lines.length);
+                console.log('识别到的词数:', words.length);
+                console.log('置信度:', confidence.toFixed(2) + '%');
+                console.log('详细结果:', { lines, words });
+                                
+                // 显示结果
+                $('#ocrProgress').hide();
+                
+                if (!text || text.trim() === '') {
+                    $('#ocrResult').html(
+                        '<strong>识别结果：</strong><br>' +
+                        '<div style="margin: 10px 0; color: red;">未识别到文字</div>' +
+                        '<div style="margin: 10px 0; font-size: 12px;">可能原因：<br>' +
+                        '1. 图像中文字太小或模糊<br>' +
+                        '2. 文字颜色与背景对比度不足<br>' +
+                        '3. 请尝试切换识别模式或框选更大区域</div>' +
+                        '<button onclick="$(\`#ocrResult\`).hide()" style="margin-top: 10px;">关闭</button>'
+                    ).show();
+                } else {
+                    $('#ocrResult').html(
+                        '<strong>识别结果：</strong><br>' +
+                        '<div style="margin: 10px 0; color: #666; font-size: 12px;">识别到 ' + lines.length + ' 行文本 (置信度: ' + confidence.toFixed(1) + '%, 模式: ' + mode + ')</div>' +
+                        '<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: SimSun, Arial; max-height: 400px; overflow-y: auto; background: #f5f5f5; padding: 10px; border-radius: 3px;">' + 
+                        text + 
+                        '</pre>' +
+                        '<button onclick="$(\`#ocrResult\`).hide()" style="margin-top: 10px;">关闭</button>' +
+                        '<button onclick="navigator.clipboard.writeText($(\`#ocrResult pre\`).text()).then(() => alert(\'已复制到剪贴板\'))" style="margin-top: 10px; margin-left: 5px;">复制</button>'
+                    ).show();
+                }
+                                
+            } catch (error) {
+                console.error('OCR识别失败:', error);
+                $('#ocrProgress').hide();
+                alert('识别失败: ' + error.message + '\n\n请检查：\n1. 网络连接是否正常\n2. 控制台是否有错误信息');
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/wmtsTools.js"></script>
+    <style>
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <script>
+
+        var map = new T.Map('map', { maxZoom: 18 });
+        map.centerAndZoom(new T.LngLat(103, 30), 10);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var res = calculatePixelInTileCorrected(102.7549476443, 30.34562769375, map.getZoom(), 'EPSG:900913')
+        var wmtsUrl = 'http://localhost:8080/geoserver/WMTS_DEM/gwc/service/wmts'; // WMTS服务地址
+            var url = wmtsUrl + '?' +
+                'REQUEST=GetFeatureInfo' +
+                '&VERSION=1.0.0' +
+                '&LAYER=WMTS_DEM%3ADEM_YA_4326' +
+                '&STYLE=' +
+                '&TILEMATRIX=EPSG:900913:' + map.getZoom() +
+                '&TILEMATRIXSET=EPSG:900913' +
+                '&SERVICE=WMTS' +
+                '&FORMAT=image/png' +
+                '&INFOFORMAT=application/json' +
+                '&TileCol=' + res.tileX +
+                '&TileRow=' + res.tileY +
+                '&I=' + Math.floor(res.pixelInTileX) +
+                '&J=' + Math.floor(res.pixelInTileY)
+
+        $.get(url).then(res => {
+                if (res.features.length > 0) {
+                    console.log(res.features[0].properties)
+                }
+
+            })
+
+      
+
+    </script>
+</body>
+
+</html>

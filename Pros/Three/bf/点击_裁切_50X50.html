@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>获取瓦片</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #canvas1 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+        }
+
+        #canvas2 {
+            position: absolute;
+            top: 50px;
+            left: 400px;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <canvas id="canvas2"></canvas>
+    <button id="getDem">T</button>
+
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 18);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        $('#getDem').on('click', function () {
+            map.addEventListener('click', HD1)
+        })
+
+        function HD1(e) {
+            const zoom = e.target.fW
+            const jd = e.lnglat.lng
+            const wd = e.lnglat.lat
+            const [tileCol, tileRow] = lngLatToTile(jd, wd, 18)
+            const [tileZSX, tileZSY] = tileToLngLat(tileCol, tileRow, 18)
+            const [tileYXX, tileYXY] = tileToLngLat(tileCol + 1, tileRow + 1, 18)
+
+            const offset_x = (jd - tileZSX) / (tileYXX - tileZSX) * 256
+            const offset_y = (wd - tileZSY) / (tileYXY - tileZSY) * 256
+
+            const tileUrl = getTileWMTSUrlIMG(tileCol, tileRow, zoom)
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = tileUrl;
+            img.onload = () => {
+                const canvas1 = $('#canvas1')[0];
+                const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+                canvas1.width = 256;
+                canvas1.height = 256;
+                ctx1.fillStyle = 'transparent';
+                ctx1.fillRect(0, 0, 256, 256);
+                ctx1.drawImage(img, 0, 0, 256, 256);
+
+                const canvas2 = $('#canvas2')[0];
+                canvas2.width = 50;
+                canvas2.height = 50;
+                const ctx2 = canvas2.getContext('2d');
+
+                const tileCuttedData = ctx1.getImageData(
+                    offset_x,
+                    offset_y,
+                    50,50
+                )
+                ctx2.putImageData(tileCuttedData,0,0)
+            }
+
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+    <style>
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        regCameraInfo(viewer);
+    //    var viewer = new Cesium.Viewer('cesiumContainer');
+
+        viewer._cesiumWidget._creditContainer.style.display = "none";
+        viewer.clock.multiplier = 200;//速度
+        viewer.clock.shouldAnimate = true;
+        var previousTime = viewer.clock.currentTime.secondsOfDay;
+
+        //地球自转事件
+        function onTickCallback() {
+            var spinRate = 1;
+            var currentTime = viewer.clock.currentTime.secondsOfDay;
+            var delta = (currentTime - previousTime) / 1000;
+            previousTime = currentTime;
+            viewer.scene.camera.rotate(Cesium.Cartesian3.UNIT_Z, -spinRate * delta);
+        }
+        viewer.clock.onTick.addEventListener(onTickCallback);
+
+        viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+            url: "http://webst02.is.autonavi.com/appmaptile?x={x}&y={y}&z={z}&lang=zh_cn&size=1&scale=1&style=8",
+        }));
+
+        var datas = [
+            { 'lon': 104.20, 'lat': 35.86, 'name': '中国' },
+            { 'lon': 105.32, 'lat': 61.52, 'name': '俄罗斯' },
+            { 'lon': -3.44, 'lat': 55.38, 'name': '英国' },
+            { 'lon': 78.96, 'lat': 20.59, 'name': '印度' },
+            { 'lon': 2.21, 'lat': 46.23, 'name': '法国' },
+            { 'lon': -95.71, 'lat': 37.09, 'name': '美国' },
+            { 'lon': 138.25, 'lat': 36.20, 'name': '日本' },
+            { 'lon': 6.13, 'lat': 49.82, 'name': '卢森堡' },
+            { 'lon': -106.35, 'lat': 56.13, 'name': '加拿大' },
+            { 'lon': 10.45, 'lat': 51.17, 'name': '德国' },
+            { 'lon': -51.93, 'lat': -14.24, 'name': '巴西' },
+            { 'lon': 127.98, 'lat': 37.66, 'name': '韩国' },
+            { 'lon': 45.08, 'lat': 23.89, 'name': '沙特阿拉伯' },
+            { 'lon': 12.57, 'lat': 41.87, 'name': '意大利' },
+            { 'lon': 53.85, 'lat': 23.42, 'name': '阿拉伯联合酋长国' },
+            { 'lon': 133.78, 'lat': -25.27, 'name': '澳大利亚' },
+            { 'lon': 9.50, 'lat': 56.26, 'name': '丹麦' },
+            { 'lon': 34.85, 'lat': 31.05, 'name': '以色列' },
+            { 'lon': 69.35, 'lat': 30.38, 'name': '巴基斯坦' },
+            { 'lon': 35.24, 'lat': 38.96, 'name': '土耳其' },
+            { 'lon': 103.82, 'lat': 1.35, 'name': '新加坡' },
+            { 'lon': -3.75, 'lat': 40.46, 'name': '西班牙' },
+            { 'lon': 113.92, 'lat': -0.79, 'name': '印度尼西亚' },
+            { 'lon': 66.92, 'lat': 48.02, 'name': '哈萨克斯坦' },
+            { 'lon': 25.75, 'lat': 61.92, 'name': '芬兰' },
+            { 'lon': -63.62, 'lat': -38.42, 'name': '阿根廷共和国' },
+            { 'lon': 21.82, 'lat': 39.07, 'name': '希腊' },
+            { 'lon': 101.98, 'lat': 4.21, 'name': '马来西亚' },
+            { 'lon': 8.68, 'lat': 9.08, 'name': '尼日利亚' },
+            { 'lon': 27.95, 'lat': 53.71, 'name': '白俄罗斯' },
+            { 'lon': -102.55, 'lat': 23.63, 'name': '墨西哥' },
+            { 'lon': 47.58, 'lat': 40.14, 'name': '阿塞拜疆共和国' },
+            { 'lon': -78.18, 'lat': -1.83, 'name': '厄瓜多尔' },
+            { 'lon': 19.15, 'lat': 51.92, 'name': '波兰' },
+            { 'lon': 121.77, 'lat': 12.88, 'name': '菲律宾' },
+            { 'lon': 8.23, 'lat': 46.82, 'name': '瑞士' },
+            { 'lon': -71.54, 'lat': -35.68, 'name': '智利' },
+            { 'lon': 25.01, 'lat': 58.60, 'name': '爱沙尼亚' },
+            { 'lon': 22.94, 'lat': -30.56, 'name': '南非' },
+            { 'lon': -63.59, 'lat': -16.29, 'name': '玻利维亚' },
+            { 'lon': -75.02, 'lat': -9.19, 'name': '秘鲁' },
+            { 'lon': 90.36, 'lat': 23.68, 'name': '孟加拉' },
+            { 'lon': 30.80, 'lat': 26.82, 'name': '埃及' }
+        ]
+
+        function addEntitys(datas) {
+
+            for (var i = 0; i < datas.length; i++) {
+
+                var data = datas[i];
+
+                var entity = viewer.entities.add({
+
+                    //参数顺序：经度、纬度
+                    position: Cesium.Cartesian3.fromDegrees(data.lon, data.lat),
+
+                    label: {
+                        text: data.name,
+                        font: '14pt monospace',
+                        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                        outlineWidth: 2,
+                        verticalOrigin: Cesium.VerticalOrigin.TOP,
+                        pixelOffset: new Cesium.Cartesian2(0, 0)//此属性为设置偏移量
+                    },
+                    type: 'text'//自定义属性
+                });
+            }
+
+
+        }
+
+        addEntitys(datas);
+
+        //监听点击事件
+        var handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+        handler.setInputAction(function (click) {
+            //获取所有entity
+            var entitys = viewer.entities.values;
+
+            if (entitys.length != null && entitys.length > 0) {
+                for (var m = 0; m < entitys.length; m++) {
+                    var entity = entitys[m];
+
+                    if (entity.type != null && entity.type == 'text') {
+                        if (entity.show == true) {
+                            entity.show = false;
+                        } else {
+                            entity.show = true;
+                        }
+                    }
+
+                }
+            }
+
+            console.info(entitys.length);
+
+        }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+
+    </script>
+    </div>
+</body>
+
+</html>

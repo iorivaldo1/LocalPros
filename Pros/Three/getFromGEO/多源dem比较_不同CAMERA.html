@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .three_res {
+            position: absolute;
+            top: 20px;
+            left: 100px;
+            display: flex;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .three_container {
+            position: relative;
+            margin-left: 20px;
+            width: 600px;
+            height: 600px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .close_con_btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+
+  
+        .query-res-table {
+            position: absolute;
+            top: 240px;
+            left: 300px;
+            background-color: #005a7b8a;
+            z-index: 450;
+        }
+
+        #query-res-header {
+            padding: 2px;
+            height: 25px;
+            cursor: move;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+
+    <div class="three_res">
+        <div class="three_container" id="treeCon1">
+            <span>DEM_YA_COP</span>
+            <button class="close_con_btn" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="treeCon2">
+            <span>DEM_YA_FABDEM</span>
+            <button class="close_con_btn" id="clo_con2">X</button>
+        </div>
+    </div>
+
+
+
+    <script>
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DEM/wms?REQUEST=GetCapabilities', 'DEM_YA_FABDEM')
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DOM/wms?REQUEST=GetCapabilities', 'ya')
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+        const [scene, camera] = createScene($('#treeCon1'));
+
+        const [scene2, camera2] = createScene($('#treeCon2'));
+        $('#getDem').on('click', HD1)
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                var FABDEM_WCS_URL = createDEMWCSUrl('WMS_DEM%3ADEM_YA_COP', e)
+                var [dom_ya_URL, x_range, y_range] = createDOMUrl('http://localhost:8080/geoserver/WMS_DOM/wms?', e)
+
+                if (x_range >= 0.08 || y_range >= 0.08) {
+                    layer.alert('框选范围过大！请重新选择范围');
+                    recTool.clear();
+                    return;
+                }
+
+                var loadIndex = layer.msg('数据加载中', {
+                    icon: 16,
+                    shade: 0.01,
+                    time: false
+                });;
+                const textureLoader = new THREE.TextureLoader();
+
+                textureLoader.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene, 'mesh_n_arrow')
+                        deleteMesh(scene, 'mesh_fabdem')
+
+                        fetch(FABDEM_WCS_URL).then(res => {
+                            return loadDEMFromGeoServer(res, scene, camera, 'mesh_fabdem')
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon1').css('visibility', 'visible')
+                        })
+                    },
+                )
+                var COP_WMS_URL = createDEMWCSUrl('WCS_DEM:DEM_YA_FABDEM', e)
+                const textureLoader2 = new THREE.TextureLoader();
+
+                textureLoader2.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene2, 'mesh_n_arrow')
+                        deleteMesh(scene2, 'mesh_fab')
+
+                        fetch(COP_WMS_URL).then(res => {
+                            return loadDEMFromGeoServer(res, scene2, camera2, 'mesh_fab')
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon2').css('visibility', 'visible')
+                        })
+                    },
+                )
+            })
+        }
+
+        $('#clo_con2').on('click', function () {
+            console.log('a')
+            var ex_mesh = getMeshByName(scene2, 'mesh_fab')
+            if (ex_mesh) {
+                scene2.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon2').css('visibility', 'hidden')
+            recTool.clear();
+        })
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+
+        $.get("/Public/data/lake2.json", {}, function (data) {
+            data.features.forEach(feature => {
+                // console.log(feature.attributes.name)
+                const pls = feature.geometry.rings[0]
+                
+                var pts = []
+                pls.forEach(pl => {
+                    pts.push(pl[0])
+                    pts.push(pl[1])
+                })
+                
+                const polygon = new Cesium.PolygonGeometry({
+                    polygonHierarchy: new Cesium.PolygonHierarchy(
+                        Cesium.Cartesian3.fromDegreesArray(pts)
+                    ),
+                });
+                const mInstance = new Cesium.GeometryInstance({
+                    geometry: polygon,
+                    id: 'polygon',
+                });
+
+                viewer.scene.primitives.add(new Cesium.GroundPrimitive({
+                    geometryInstances: mInstance,
+                    appearance: new Cesium.EllipsoidSurfaceAppearance({
+                        material: new Cesium.Material({
+                            fabric: {
+                                type: "Water",
+                                uniforms: {
+                                    baseWaterColor: new Cesium.Color(64 / 255.0, 157 / 255.0, 253 / 255.0, 0.5),
+                                    normalMap: '/Public/imgs/waterNormals.jpg',
+                                    frequency: 1000.0,
+                                    animationSpeed: 0.005,
+                                    amplitude: 10,
+                                    specularIntensity: 10
+                                }
+                            }
+                        })
+                    }),
+                }));
+                
+                var pyPositions = polygon._polygonHierarchy.positions;
+                var cnDD = Cesium.BoundingSphere.fromPoints(pyPositions).center;
+                var cnWGS_Radius = Cesium.Cartographic.fromCartesian(cnDD);
+                var cnWGS_Degress_longitude = Cesium.Math.toDegrees(cnWGS_Radius.longitude);
+                var cnWGS_Degress_latitude = Cesium.Math.toDegrees(cnWGS_Radius.latitude)
+
+                viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(cnWGS_Degress_longitude, cnWGS_Degress_latitude),
+                    label: {
+                        text: feature.attributes.name,
+                        font: "16px sans-serif",
+                        // style: Cesium.LabelStyle.FILL,
+                        // 对齐方式(水平和竖直)
+                        // horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+                        // verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                        showBackground: true,
+                        backgroundColor: new Cesium.Color.fromBytes(0, 70, 24),
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        eyeOffset: new Cesium.Cartesian3(0, 0, -2000)
+                    },
+                });
+
+            })
+
+        })
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(102.746, 30.703, 20000),
+            duration: 0
+        })
+
+
+    </script>
+    </div>
+</body>
+
+</html>

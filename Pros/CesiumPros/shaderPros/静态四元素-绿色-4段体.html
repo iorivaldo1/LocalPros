@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+        
+
+        const shaderSource = `
+            uniform vec4 color;
+            uniform float gradationNumber;
+
+            czm_material czm_getMaterial(czm_materialInput materialInput)
+            {
+                vec4 outColor = color;
+                czm_material material = czm_getDefaultMaterial(materialInput);
+
+                vec2 st = materialInput.st;
+                // outColor.r = st.s;
+                // outColor.r = st.t;
+                // outColor.gba = vec3(0.2);
+                outColor.a = fract(st.s * gradationNumber);
+
+                material.diffuse = czm_gammaCorrect(outColor.rgb);
+                material.alpha = outColor.a;
+                return material;
+            }
+        `
+
+        const myMaterial = new Cesium.Material({
+            translucent: false,
+            fabric: {
+                type: 'test',
+                uniforms: {
+                    color: new Cesium.Color(0, 1, 0, 1),
+                    gradationNumber: 4,
+                },
+                source: shaderSource
+            }
+        })
+
+
+        const appearance = new Cesium.MaterialAppearance({
+            material: myMaterial,
+        })
+
+        const polylineAppearance = new Cesium.PolylineMaterialAppearance({
+            material: myMaterial
+        })
+
+        const polygonPrimitive = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: new Cesium.PolygonGeometry({
+                    polygonHierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray([
+                        114, 25,
+                        114.01, 25,
+                        114.01, 25.01,
+                        114, 25.01,
+                    ])),
+                    height: 1000
+                })
+            }),
+            appearance
+        })
+
+        const boxPrimitive = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: Cesium.BoxGeometry.fromDimensions({
+                    dimensions: new Cesium.Cartesian3(1000, 1000, 1000)
+                }),
+                modelMatrix: Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(114.005, 25.02, 1000))
+            }),
+            appearance
+        })
+
+        const polylinePrimitive = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: new Cesium.PolylineGeometry({
+                    positions: Cesium.Cartesian3.fromDegreesArrayHeights([
+                        114.02, 25.02, 1000,
+                        114.05, 25.02, 1000
+                    ]),
+                    width: 2,
+                })
+            }),
+            appearance: polylineAppearance
+        })
+
+        const ellipsoidPrimitive = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: new Cesium.EllipsoidGeometry({
+                    radii: new Cesium.Cartesian3(1000, 1000, 1000),
+                }),
+                modelMatrix: Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(114.03, 25.005, 1000))
+            }),
+            appearance
+        })
+
+        viewer.scene.primitives.add(polygonPrimitive)
+        viewer.scene.primitives.add(boxPrimitive)
+        viewer.scene.primitives.add(polylinePrimitive)
+        viewer.scene.primitives.add(ellipsoidPrimitive)
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(114.02, 25.01, 10000),
+            duration: 0
+        })
+
+    </script>
+    </div>
+</body>
+
+</html>

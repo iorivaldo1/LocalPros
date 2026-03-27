@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+        $.get("/Public/data/nature_reserve.json", {}, function (data) {
+            data.features.forEach(feature => {
+                const pls = feature.geometry.rings[0]
+                var pts = []
+                pls.forEach(pl => {
+                    pts.push(pl[0])
+                    pts.push(pl[1])
+                })
+                const polygon = new Cesium.PolygonGeometry({
+                    polygonHierarchy: new Cesium.PolygonHierarchy(
+                        Cesium.Cartesian3.fromDegreesArray(pts)
+                    ),
+                });
+                const mInstance = new Cesium.GeometryInstance({
+                    geometry: polygon,
+                    id: 'polygon',
+                });
+                const materialAppearance = new Cesium.MaterialAppearance({
+                    material: Cesium.Material.fromType('Color', {
+                        color: new Cesium.Color(0.0, 1.0, 0.0, 1.0)
+                    }),
+                });
+
+                viewer.scene.groundPrimitives.add(new Cesium.GroundPrimitive({
+                    geometryInstances: mInstance,
+                    appearance: materialAppearance
+
+                }));
+
+                var pyPositions = polygon._polygonHierarchy.positions;
+                var cnDD = Cesium.BoundingSphere.fromPoints(pyPositions).center;
+                var cnWGS_Radius = Cesium.Cartographic.fromCartesian(cnDD);
+                var cnWGS_Degress_longitude = Cesium.Math.toDegrees(cnWGS_Radius.longitude);
+                var cnWGS_Degress_latitude = Cesium.Math.toDegrees(cnWGS_Radius.latitude)
+
+                viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(cnWGS_Degress_longitude, cnWGS_Degress_latitude),
+                    label: {
+                        text: feature.attributes.name,
+                        font: "16px sans-serif",
+                        showBackground: true,
+                        backgroundColor: new Cesium.Color.fromBytes(0, 70, 24),
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        eyeOffset: new Cesium.Cartesian3(0, 0, -2000),
+                        pixelOffset: new Cesium.Cartesian2(0, -30),
+                    },
+                });
+
+
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(102.7469, 30.2048, 200000),
+                    duration: 0
+                })
+
+            })
+        })
+    </script>
+    </div>
+</body>
+
+</html>

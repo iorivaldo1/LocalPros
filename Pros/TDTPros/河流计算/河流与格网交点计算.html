@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/f3d.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+        <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+    <div id="coordSwitchButton">
+        <span>显示坐标</span>
+        <button class="switch">
+            <span class="switch_circle circle_left"></span>
+        </button>
+    </div>
+
+    <div id="coordInfoContainer">
+        <span id="coord"></span>
+    </div>
+    <script>
+
+        //使用layui的loading功能
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        //河流与bbox相交部分的列表
+        let geo_marker_list = []
+        //geo-dem网格ov列表
+        let demOverLayerList = []
+
+        var map = new T.Map('map', { tileSize: 512 });
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(102.98574, 30.00357), 18);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        //显示坐标功能
+        regShowCoord(map);
+
+        const river_list = []
+        $.get('http://localhost:8080/localGEO/getYARiver').then(res => {
+            res.forEach(riv => {
+                const coord_json = JSON.parse(riv.geometry).coordinates
+                const riv_name = riv.name
+                var points = []
+                coord_json.forEach(p => {
+                    points.push(new T.LngLat(p[0], p[1]))
+                })
+                var line = new T.Polyline(points, {
+                    color: 'red',
+                    weight: 0.8,
+                    opacity: 0.8,
+                    lineStyle: "dash",
+                });
+                map.addOverLay(line);
+                river_list.push([line, riv_name])
+            })
+        })
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+
+        $('#getDem').on('click', HD1)
+
+        async function HD1() {
+            geo_marker_list.forEach(o => {
+                map.removeOverLay(o)
+            })
+            geo_marker_list = []
+
+            demOverLayerList.forEach(o => {
+                map.removeOverLay(o)
+            })
+            demOverLayerList = []
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            const bbox_geo = await getBbox()
+
+            //选择框过大时，退出
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            } else if (x_range <= 0.0003 || y_range <= 0.0003) {
+                layer.alert('框选范围过小！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]),//左下
+                new T.LngLat(bounds[2], bounds[3]) //右上
+            )
+            //构造扩大范围矩形
+            const geo_rectangle = []
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng()
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat()
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng()
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat()
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny))
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            })
+            map.addOverLay(rect)
+            demOverLayerList.push(rect)
+            recTool.clear()
+
+            const riv_ins =await cal_riv_intersects(river_list, bbox_geo_expand)
+            const grid_line_list =await drawGridAndEleLabel(DEMUrl, bounds, demOverLayerList)
+            const riv_ins_cross = await cal_riv_cross_grid(riv_ins,grid_line_list)
+        }
+
+
+
+
+
+    </script>
+</body>
+
+</html>

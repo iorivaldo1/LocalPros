@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script>
+
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // 创建相机
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 20, 3);
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 添加光源
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // 添加控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        //-----------------------------------
+        const rtWidth = 16;
+        const rtHeight = 16;
+        const renderTarget = new THREE.WebGLRenderTarget(rtWidth, rtHeight);
+
+        const rtFov = 75;
+        const rtAspect = rtWidth / rtHeight;
+        const rtNear = 0.1;
+        const rtFar = 5;
+        const rtCamera = new THREE.PerspectiveCamera(rtFov, rtAspect, rtNear, rtFar);
+        rtCamera.position.z = 2;
+
+        const rtScene = new THREE.Scene();
+        rtScene.background = new THREE.Color('red');
+
+        {
+
+            const color = 0xFF00FF;
+            const intensity = 3;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(- 1, 2, 4);
+            rtScene.add(light);
+
+        }
+
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        function makeInstance(geometry, color, x) {
+
+            const material = new THREE.MeshPhongMaterial({ color });
+
+            const cube = new THREE.Mesh(geometry, material);
+            rtScene.add(cube);
+
+            cube.position.x = x;
+
+            return cube;
+
+        }
+
+        const rtCubes = [
+            makeInstance(geometry, 0x44aa88, 0),
+            makeInstance(geometry, 0x8844aa, - 2),
+            makeInstance(geometry, 0xaa8844, 2),
+        ];
+
+        const plane_geometry = new THREE.PlaneGeometry(5,5,50,50)
+
+        const material = new THREE.MeshPhongMaterial({
+            map: renderTarget.texture,
+            side: THREE.DoubleSide
+        });
+        const plane = new THREE.Mesh(plane_geometry, material);
+        plane.rotateX(- Math.PI/2)
+        scene.add(plane);
+
+        //-----------------------------------
+
+        // 动画循环
+        function render(time) {
+            time *= 0.001;
+            // rotate all the cubes in the render target scene
+            rtCubes.forEach((cube, ndx) => {
+
+                const speed = 1 + ndx * .1;
+                const rot = time * speed;
+                cube.rotation.x = rot;
+                cube.rotation.y = rot;
+
+            });
+
+            // draw render target scene to render target
+            renderer.setRenderTarget(renderTarget);
+            renderer.render(rtScene, rtCamera);
+            renderer.setRenderTarget(null);
+
+            // rotate the cube in the scene
+            // plane.rotation.x = time * 0.1;
+            // plane.rotation.y = time * 0.1;
+
+            // render the scene to the canvas
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+
+        }
+
+        requestAnimationFrame(render);
+
+
+    </script>
+</body>
+
+</html>

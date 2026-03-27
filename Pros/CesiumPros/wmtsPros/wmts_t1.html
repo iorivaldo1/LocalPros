@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        const west = Cesium.Math.toRadians(101.9642680901);
+        const south = Cesium.Math.toRadians(28.862478591599995);
+        const east = Cesium.Math.toRadians(103.4113808093);
+        const north = Cesium.Math.toRadians(30.922261509850014);
+
+        var wmtsProvider = new Cesium.WebMapTileServiceImageryProvider({
+            url: "http://8.155.1.150:8080/geoserver/WMTS_LABEL/gwc/service/wmts",
+            layer: "WMTS_LABEL:RIVER_YA",
+            style: "",
+            format: "image/png",
+            tileMatrixSetID: "EPSG:900913",
+            tileMatrixLabels: ["EPSG:900913:0", "EPSG:900913:1", "EPSG:900913:2", "EPSG:900913:3", "EPSG:900913:4", "EPSG:900913:5", "EPSG:900913:6",
+                "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
+                "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+            rectangle: new Cesium.Rectangle(west, south, east, north),
+            maximumLevel: 17,
+        })
+
+        viewer.imageryLayers.addImageryProvider(wmtsProvider);
+
+        var wmtsProvider2 = new Cesium.WebMapTileServiceImageryProvider({
+            url: "http://8.155.1.150:8080/geoserver/WMTS_F/gwc/service/wmts",
+            layer: "WMTS_F:RIVER_YA",
+            style: "",
+            format: "image/png",
+            tileMatrixSetID: "EPSG:900913",
+            tileMatrixLabels: ["EPSG:900913:0", "EPSG:900913:1", "EPSG:900913:2", "EPSG:900913:3", "EPSG:900913:4", "EPSG:900913:5", "EPSG:900913:6",
+                "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
+                "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+            rectangle: new Cesium.Rectangle(west, south, east, north),
+            maximumLevel: 17,
+        })
+
+        viewer.imageryLayers.addImageryProvider(wmtsProvider2);
+
+        viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(
+                102.708731,
+                30.563719,
+                30000
+            ),
+            orientation: {
+                heading: Cesium.Math.toRadians(0.0),
+                pitch: Cesium.Math.toRadians(-80),
+                roll: 0.0,
+            },
+        })
+    </script>
+    </div>
+</body>
+
+</html>

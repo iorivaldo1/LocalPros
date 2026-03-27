@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            // imageryProvider: false
+        });
+
+
+        var tiandituModel = new Cesium.ProviderViewModel({
+            name: "天地图影像",
+            tooltip: "天地图影像及中文标注数据",
+            iconUrl: Cesium.buildModuleUrl("/Public/imgs/tdtLOGO.png"),
+            creationFunction: function () {
+                var mapsources = [];
+                var yx = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "http://t0.tianditu.com/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=5174fc271848db77b921f28bb7ce5e22",
+                    layer: "tdtBasicLayer",
+                    style: "default",
+                    format: "image/jpeg",
+                    tileMatrixSetID: "GoogleMapsCompatible",
+                    show: false
+                })
+                var jd = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "http://t0.tianditu.gov.cn/cia_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=cia&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=5174fc271848db77b921f28bb7ce5e22",
+                    layer: "tiandituImgMarker",
+                    style: "default",
+                    format: "image/jpeg",
+                    tileMatrixSetID: "tiandituImgMarker",
+                    show: true,
+                    maximumLevel: 16
+                })
+                mapsources.push(yx, jd);
+                return mapsources;
+            }
+        });
+        viewer.baseLayerPicker.viewModel.imageryProviderViewModels.push(tiandituModel)
+    </script>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Test</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #canvas1 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+        }
+
+        #canvas2 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <canvas id="canvas2"></canvas>
+    <button id="getDem">T</button>
+
+    <script>
+        var map = new T.Map('map');
+        map.centerAndZoom(new T.LngLat(103, 30), 18);
+
+        var ctrl = new T.Control.MapType(
+            {
+                position: T_ANCHOR_BOTTOM_RIGHT,
+            }
+        );
+        map.addControl(ctrl);
+
+        //启动时默认的layer
+        const mapLayer = Object.values(ctrl.hW)[2].layer
+        map.setMapType(mapLayer)
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+
+        async function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+
+            const bbox = await getBbox()
+
+            const zoom = 18;
+            const tileSize = 256;
+
+            var minX = bbox.getSouthWest().lng
+            var minY = bbox.getSouthWest().lat
+            var maxX = bbox.getNorthEast().lng
+            var maxY = bbox.getNorthEast().lat
+
+            var pro_p1 = LatLon2XY(minX, minY)
+            var pro_p2 = LatLon2XY(maxX, maxY)
+            var dom_width = Math.round(Math.abs(pro_p2.y - pro_p1.y))
+            var dom_height = Math.round(Math.abs(pro_p2.x - pro_p1.x))
+
+            var imageURL =
+                'http://218.6.196.135:9080/geoserver/WMS_DOM/wms?' +
+                'Request=GetMap' +
+                '&Service=WMS' +
+                '&Version=1.1.0' +
+                '&LAYERS=WMS_DOM%3ADOM_YA_GOOGLE_18_B3' +
+                '&STYLE=' +
+                '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+                '&WIDTH=' + dom_width +
+                '&HEIGHT=' + dom_height +
+                '&SRS=EPSG%3A4326' +
+                '&FORMAT=image%2Fpng' +
+                '&TRANSPARENT=true'
+
+            // var imageURL =
+            //     'http://localhost:8080/geoserver/WMS_DOM/wms?' +
+            //     'Request=GetMap' +
+            //     '&Service=WMS' +
+            //     '&Version=1.1.0' +
+            //     '&LAYERS=WMS_DOM%3ADOM_YA_GOOGLE_18_B3' +
+            //     '&STYLE=' +
+            //     '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+            //     '&WIDTH=' + dom_width +
+            //     '&HEIGHT=' + dom_height +
+            //     '&SRS=EPSG%3A4326' +
+            //     '&FORMAT=image%2Fpng' +
+            //     '&TRANSPARENT=true'
+
+
+            const canvas1 = $('#canvas1')[0];
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = dom_width;
+            canvas1.height = dom_height;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, dom_width, dom_height);
+
+            // 加载imageURL3的图片并显示在canvas1上
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = function () {
+                ctx1.drawImage(img, 0, 0, dom_width, dom_height);
+            };
+            img.onerror = function () {
+                console.error('图片加载失败:', imageURL);
+            };
+            img.src = imageURL;
+
+
+        }
+    </script>
+</body>
+
+</html>

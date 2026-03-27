@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Texture Loader with Progress</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #f0f0f0; }
+        #progress-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .progress-bar {
+            width: 300px;
+            height: 20px;
+            background: #eee;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        #container { 
+            width: 100%; 
+            height: 100vh; 
+        }
+        canvas { 
+            display: block; 
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="progress-container">
+        <h3>纹理加载进度</h3>
+        <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <div id="progress-text">0%</div>
+        <div id="file-info"></div>
+    </div>
+    <div id="container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // 创建带进度监控的纹理加载器
+        function createTextureLoaderWithProgress() {
+            const originalLoader = new THREE.TextureLoader();
+            
+            return {
+                load: function(url, onLoad, onProgress, onError) {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', url, true);
+                    xhr.responseType = 'blob';
+                    
+                    xhr.addEventListener('progress', function(event) {
+                        if (onProgress && event.lengthComputable) {
+                            const percent = (event.loaded / event.total) * 100;
+                            onProgress({
+                                url: url,
+                                loaded: event.loaded,
+                                total: event.total,
+                                percent: percent,
+                                lengthComputable: true
+                            });
+                        } else if (onProgress) {
+                            onProgress({
+                                url: url,
+                                loaded: event.loaded,
+                                total: 0,
+                                percent: 0,
+                                lengthComputable: false
+                            });
+                        }
+                    });
+                    
+                    xhr.addEventListener('load', function() {
+                        if (xhr.status === 200) {
+                            const blobUrl = URL.createObjectURL(xhr.response);
+                            
+                            // 使用原生 loader 加载 Blob URL
+                            originalLoader.load(blobUrl, function(texture) {
+                                URL.revokeObjectURL(blobUrl);
+                                
+                                // 最终进度 100%
+                                if (onProgress) {
+                                    onProgress({
+                                        url: url,
+                                        loaded: xhr.total,
+                                        total: xhr.total,
+                                        percent: 100,
+                                        lengthComputable: true,
+                                        completed: true
+                                    });
+                                }
+                                
+                                if (onLoad) onLoad(texture);
+                            }, undefined, function(err) {
+                                if (onError) onError(err);
+                            });
+                        } else if (onError) {
+                            onError(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                        }
+                    });
+                    
+                    xhr.addEventListener('error', function() {
+                        if (onError) onError(new Error('Network error'));
+                    });
+                    
+                    xhr.send();
+                    
+                    // 返回一个可以取消加载的对象
+                    return {
+                        cancel: function() {
+                            xhr.abort();
+                            URL.revokeObjectURL(blobUrl);
+                        }
+                    };
+                }
+            };
+        }
+
+        // 初始化 Three.js 场景
+        let scene, camera, renderer, cube;
+
+        function init() {
+            // 创建场景
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('container').appendChild(renderer.domElement);
+
+            // 添加灯光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            scene.add(directionalLight);
+
+            // 创建带进度监控的纹理加载器
+            const textureLoader = createTextureLoaderWithProgress();
+
+            // 加载多个纹理示例
+            loadTextures(textureLoader);
+        }
+
+        function loadTextures(loader) {
+            const textures = [
+                'https://threejs.org/examples/textures/crate.gif',
+                'https://threejs.org/examples/textures/uv_grid_opengl.jpg',
+                'https://threejs.org/examples/textures/brick_diffuse.jpg'
+            ];
+
+            textures.forEach((textureUrl, index) => {
+                console.log(`开始加载纹理 ${index + 1}: ${textureUrl}`);
+                
+                loader.load(
+                    textureUrl,
+                    // onLoad 回调
+                    function(texture) {
+                        console.log(`纹理 ${index + 1} 加载完成`);
+                        createCubeWithTexture(texture, index);
+                    },
+                    // onProgress 回调
+                    function(progress) {
+                        updateProgressUI(progress, index + 1);
+                    },
+                    // onError 回调
+                    function(error) {
+                        console.error(`纹理 ${index + 1} 加载失败:`, error);
+                        document.getElementById('progress-text').innerHTML += 
+                            `<br><span style="color: red;">错误: ${error.message}</span>`;
+                    }
+                );
+            });
+        }
+
+        function updateProgressUI(progress, textureIndex) {
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            const fileInfo = document.getElementById('file-info');
+
+            if (progress.lengthComputable) {
+                progressFill.style.width = `${progress.percent}%`;
+                progressText.innerHTML = `纹理 ${textureIndex}: ${progress.percent.toFixed(1)}%`;
+                
+                const loadedMB = (progress.loaded / 1024 / 1024).toFixed(2);
+                const totalMB = (progress.total / 1024 / 1024).toFixed(2);
+                fileInfo.innerHTML = `文件大小: ${loadedMB}MB / ${totalMB}MB`;
+                
+                if (progress.percent === 100) {
+                    progressText.innerHTML += ' - 完成!';
+                }
+            } else {
+                progressText.innerHTML = `纹理 ${textureIndex}: 加载中... (${progress.loaded} bytes)`;
+            }
+        }
+
+        function createCubeWithTexture(texture, index) {
+            // 创建几何体
+            const geometry = new THREE.BoxGeometry(2, 2, 2);
+            const material = new THREE.MeshPhongMaterial({ map: texture });
+            
+            // 创建网格
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.x = (index - 1) * 3; // 在x轴上排列立方体
+            scene.add(cube);
+
+            // 如果是第一个立方体，设置相机位置
+            if (index === 0) {
+                camera.position.z = 5;
+            }
+
+            // 动画循环
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                // 旋转所有立方体
+                scene.children.forEach(child => {
+                    if (child.isMesh) {
+                        child.rotation.x += 0.01;
+                        child.rotation.y += 0.01;
+                    }
+                });
+                
+                renderer.render(scene, camera);
+            }
+            
+            animate();
+        }
+
+        // 处理窗口大小变化
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 初始化场景
+        init();
+    </script>
+</body>
+</html>

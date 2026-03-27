@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+        var ip = window.location.host.split(':')[0] + ':8083';
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrainProvider: await Cesium.CesiumTerrainProvider.fromUrl(
+                `http://${ip}/terrain/baoxin`,
+            )
+        });
+
+        $.get("https://geo.datav.aliyun.com/areas_v3/bound/511827.json", {}, function (data) {
+            let arr = []
+            data.features[0].geometry.coordinates[0][0].forEach(item => {
+                arr.push(item[0])
+                arr.push(item[1])
+            });
+            var polygonWithHole = new Cesium.PolygonGeometry({
+                polygonHierarchy: new Cesium.PolygonHierarchy(
+                    Cesium.Cartesian3.fromDegreesArray([73.0, 53.0, 73.0, 0.0, 135.0, 0.0, 135.0, 53.0]),
+                    [new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(arr))]
+                ),
+                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            });
+            var geometry = Cesium.PolygonGeometry.createGeometry(polygonWithHole);
+            let instances = [];
+            instances.push(new Cesium.GeometryInstance({
+                geometry: geometry,
+                attributes: {
+                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.fromCssColorString("#081122"))
+                }
+            }));
+            function addRect(instances, left, down, right, up) {
+                instances.push(new Cesium.GeometryInstance({
+                    geometry: new Cesium.RectangleGeometry({
+                        rectangle: Cesium.Rectangle.fromDegrees(left, down, right, up)
+                    }),
+                    heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                    attributes: {
+                        color: Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.fromCssColorString("#081122"))
+                    }
+                }));
+            }
+
+            addRect(instances, -180.0, -90.0, 73.0, 90.0);
+            addRect(instances, 135.0, -90.0, 180.0, 90.0);
+            addRect(instances, 73.0, 53.0, 135.0, 90.0);
+            addRect(instances, 73.0, -90.0, 135.0, 0.0);
+            viewer.scene.primitives.add(new Cesium.Primitive({
+                geometryInstances: instances,
+                appearance: new Cesium.PerInstanceColorAppearance({
+                    flat: true,
+                    translucent: false
+                })
+            }));
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(102.763462, 30.059955, 2000),
+                duration: 0
+            })
+        },
+
+        )
+
+
+
+    </script>
+    </div>
+</body>
+
+</html>

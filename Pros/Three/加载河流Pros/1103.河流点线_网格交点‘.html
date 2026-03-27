@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/f3d.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .v_header {
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #sh_riv_sphere {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_cross_sphere {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_riv_polyline {
+            position: absolute;
+            top: 110px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+
+        #clo_con1 {
+            right: 10px;
+        }
+
+        #reloadScene1 {
+            right: 40px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+    <div id="coordSwitchButton">
+        <span>显示坐标</span>
+        <button class="switch">
+            <span class="switch_circle circle_left"></span>
+        </button>
+    </div>
+
+    <div class="sw_container" id="sh_riv_sphere">
+        <span>河流节点</span>
+        <button class="switch switch_active">
+            <span class="switch_circle circle_right"></span>
+        </button>
+    </div>
+
+    <div class="sw_container" id="sh_cross_sphere">
+        <span>网格交点</span>
+        <button class="switch switch_active">
+            <span class="switch_circle circle_right"></span>
+        </button>
+    </div>
+
+    <div class="sw_container" id="sh_riv_polyline">
+        <span>河流线</span>
+        <button class="switch switch_active">
+            <span class="switch_circle circle_right"></span>
+        </button>
+    </div>
+    <div id="coordInfoContainer">
+        <span id="coord"></span>
+    </div>
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+    </div>
+
+
+    <script>
+
+        //使用layui的loading功能
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        // var maxElevation = -Infinity;
+        // var minElevation = -Infinity;
+
+        //three-桥梁点列表
+        let bridgeNameList = []
+        //three-桥梁注记列表
+        let labelBridgeList = []
+        //three-河流-polyline列表
+        let riverNamePolylineList = []
+
+        //geo-桥梁点列表
+        let bridgeList = []
+        //地图上点击点的容器，不要放其它的
+        let geo_marker_list = []
+        let dem_marker_list = []
+        //geo-dem网格ov列表
+        let demOverLayerList = []
+
+        //加载ya河流
+        let river_list = []
+        $.get('http://localhost:8080/localGEO/getYARiver').then(res => {
+            res.forEach(riv => {
+                const coord_json = JSON.parse(riv.geometry).coordinates
+                const riv_name = riv.name
+                var points = []
+                coord_json.forEach(p => {
+                    points.push(new T.LngLat(p[0], p[1]))
+                })
+                var line = new T.Polyline(points, {
+                    color: 'red',
+                    weight: 0.8,
+                    opacity: 0.8,
+                    lineStyle: "dash",
+                });
+                map.addOverLay(line);
+                river_list.push([line, riv_name])
+            })
+        })
+
+        //设置dem范围
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')
+
+        var map = new T.Map('map', { tileSize: 512 });
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(102.98574, 30.00357), 18);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        //显示坐标功能
+        regShowCoord(map);
+        //显示河流节点
+        regSHRivSphere();
+        //显示网格节点
+        regSHCrossSphere();
+        //显示河流线
+        regSHRivPolyline();
+
+
+        //测试用--加入yaBridge
+        test_add_ya_bridge_point(bridgeList)
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        $('#getDem').on('click', HD1)
+        async function HD1() {
+            console.clear()
+
+            demOverLayerList.forEach(ov => {
+                map.removeOverLay(ov)
+            })
+
+            init3DViewDragResize('Window_3D')
+
+            //清除点击点(天地图和3维中)
+            clearMarkers(map, geo_marker_list, scene1, dem_marker_list)
+            dem_marker_list = []
+            geo_marker_list = []
+            //避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden')
+
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            let bbox_geo = await getBbox()
+
+            //选择框过大时，退出
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            } else if (x_range <= 0.0003 || y_range <= 0.0003) {
+                layer.alert('框选范围过小！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+
+            //数据加载进度框
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]),//左下
+                new T.LngLat(bounds[2], bounds[3]) //右上
+            )
+            //构造扩大范围矩形
+            const geo_rectangle = []
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng()
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat()
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng()
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat()
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny))
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            })
+            map.addOverLay(rect)
+            demOverLayerList.push(rect)
+            recTool.clear()
+            //------------------------------------二维--------------------------------------
+            //1.生成geo_bbox内的河流点
+            const river_ins_list = await cal_riv_intersects(river_list, bbox_geo_expand)
+
+            //------------------------------------三维--------------------------------------
+            //清除scene中已有three对象
+            deleteMesh(scene1, 'mesh_compass')
+            deleteMesh(scene1, 'mesh_dem')
+
+            bridgeNameList.forEach(p => {
+                deleteMesh(scene1, p)
+            })
+            labelBridgeList.forEach(p => {
+                deleteMesh(scene1, p)
+            })
+            riverNamePolylineList.forEach(r => {
+                deleteMesh(scene1, r)
+            })
+
+
+            //dem数据
+            const demData = await fetch(DEMUrl)
+            const demDataClone = demData.clone()
+            //demData.clone()只能读取一次，使用demDataClone.arrayBuffer()可以多次读取
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+            //dem生成mesh
+            const [mesh_dem, minEle, maxEle, geometry] = await c_mesh_dem(demData, camera1, 'mesh_dem')
+            scene1.add(mesh_dem)
+
+            //计算dem的bbox
+            const bbox_dem = new THREE.Box3().setFromObject(mesh_dem);
+
+            //计算riv与mesh各边的相交点，并在scene中绘制
+            const [riv_sphere_group, cross_sphere_group, riv_polyline_group] = await c_polyline_riv(scene1, mesh_dem, bbox_dem, river_ins_list, bbox_geo_expand)
+
+            //纹理,先获取dom(img影像和cia影像注记混合)
+            const domTile = await c_dom_img_cia(bbox_geo_expand)
+            loadTexture(mesh_dem, domTile)
+
+            //compass生成mesh
+            const mesh_compass = await c_mesh_compass(bbox_dem, 'mesh_compass')
+            scene1.add(mesh_compass)
+
+            //桥梁点
+            const geo_point_bridge_list = await c_point_bridge(demDataArrayBuffer, bbox_dem, bridgeList, bbox_geo_expand, minEle, maxEle)
+            geo_point_bridge_list.forEach(p => {
+                scene1.add(p[0])
+                bridgeNameList.push(p[1])
+            })
+
+            //bridge_label_list,先根据范围计算字体大小
+            const fontSize = calFontSizeByGeoBBox(bbox_geo_expand)
+            const label_bridge_list = await c_label_bridge(geo_point_bridge_list, fontSize)
+            label_bridge_list.forEach(l => {
+                scene1.add(l)
+                labelBridgeList.push(l.name)
+            })
+
+            //避免出现白模，initThreeView异步最后让其显示
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+                $('#' + 'Window_3D').css('visibility', 'visible')
+                resolve();
+            })
+
+            function animate() {
+                requestAnimationFrame(animate);
+                updateSphereSizes(geo_point_bridge_list, camera1)
+
+                if (dem_marker_list.length > 0) {
+                    updateSphereSize(dem_marker_list[0], camera1)
+                }
+
+                updateRiverPointSphere(riv_sphere_group, camera1)
+                updateRiverPointSphere(cross_sphere_group, camera1)
+                updateRiverPointSphere(riv_polyline_group, camera1)
+
+                //指北针始终面向camera
+                mesh_compass.lookAt(camera1.position);
+
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+
+
+            initClick(rect, map, scene1, renderer1, camera1, mesh_dem, bbox_geo_expand)
+
+            //显示元素控制组件
+            $('.sw_container').css('visibility', 'visible');
+        }
+
+        $('#clo_con1').on('click', function () {
+            demOverLayerList.forEach(ov => {
+                map.removeOverLay(ov)
+            })
+            clearMarkers(map, geo_marker_list, scene1, dem_marker_list)
+
+            dem_marker_list = []
+            geo_marker_list = []
+
+            $('#Window_3D').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 6.5);
+        })
+    </script>
+</body>
+
+</html>

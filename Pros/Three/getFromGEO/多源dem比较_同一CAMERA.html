@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .three_res {
+            position: absolute;
+            top: 20px;
+            left: 100px;
+            display: flex;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .three_container {
+            position: relative;
+            margin-left: 20px;
+            width: 400px;
+            height: 400px;
+            background-color: rgba(0, 106, 245, 0.623);
+            font-weight: 700;
+            z-index: 450;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        .close_con_btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 460;
+            width: 25px;
+            height: 25px;
+        }
+
+
+        .query-res-table {
+            position: absolute;
+            top: 240px;
+            left: 300px;
+            background-color: #005a7b8a;
+            z-index: 450;
+        }
+
+        #query-res-header {
+            padding: 2px;
+            height: 25px;
+            cursor: move;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+
+    <div class="three_res">
+        <div class="three_container" id="treeCon1">
+            <span>DEM_YA_COP</span>
+            <button class="close_con_btn" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="treeCon2">
+            <span>DEM_YA_ALOS</span>
+            <button class="close_con_btn" id="clo_con2">X</button>
+        </div>
+        <div class="three_container" id="treeCon3">
+            <span>DEM_YA_NASADEM</span>
+            <button class="close_con_btn" id="clo_con3">X</button>
+        </div>
+        <div class="three_container" id="treeCon4">
+            <span>DEM_YA_FABDEM</span>
+            <button class="close_con_btn" id="clo_con4">X</button>
+        </div>
+    </div>
+
+
+
+    <script>
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+        //原来为WMS_DEM,WMS只有8位(dem从0-256)，改为WCS_DEM,WCS为32位float,dem范围满足
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_YA_FABDEM')
+        setSourceBounds('http://localhost:8080/geoserver/WMS_DOM/wms?REQUEST=GetCapabilities', 'ya')
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#treeCon1'), camera);
+        const [scene2, control2, renderer2] = createScene($('#treeCon2'), camera);
+        const [scene3, control3, renderer3] = createScene($('#treeCon3'), camera);
+        const [scene4, control4, renderer4] = createScene($('#treeCon4'), camera);
+        $('#getDem').on('click', HD1)
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                const x_range = e.currentBounds.getNorthEast().lng - e.currentBounds.getSouthWest().lng
+                const y_range = e.currentBounds.getNorthEast().lat - e.currentBounds.getSouthWest().lat
+                if (x_range >= 0.08 || y_range >= 0.08) {
+                    layer.alert('框选范围过大！请重新选择范围');
+                    recTool.clear();
+                    return;
+                }
+                var loadIndex = layer.msg('数据加载中', {
+                    icon: 16,
+                    shade: 0.01,
+                    time: false
+                });;
+
+                var dom_ya_URL = createDOMUrl('http://localhost:8080/geoserver/WMS_DOM/wms?', e)
+                var COP_WMS_URLL = createDEMWCSUrl('WCS_DEM%3ADEM_YA_COP', e)
+                const textureLoader1 = new THREE.TextureLoader();
+                textureLoader1.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene1, 'mesh_n_arrow')
+                        deleteMesh(scene1, 'mesh_fabdem')
+
+                        fetch(COP_WMS_URLL).then(res => {
+                            return loadDEMFromGeoServer(res, scene1, camera, 'mesh_fabdem')
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+
+                            function animate() {
+                                requestAnimationFrame(animate);
+                                control1.update();
+                                renderer1.render(scene1, camera);
+
+                            }
+                            animate();
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon1').css('visibility', 'visible')
+                        })
+                    },
+                )
+
+                var ALOSDEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_YA_ALOS', e)
+                const textureLoader2 = new THREE.TextureLoader();
+                textureLoader2.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene2, 'mesh_n_arrow')
+                        deleteMesh(scene2, 'mesh_alos')
+
+                        fetch(ALOSDEM_WCS_UR).then(res => {
+                            return loadDEMFromGeoServer(res, scene2, camera, 'mesh_alos')
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+
+                            function animate() {
+                                requestAnimationFrame(animate);
+                                control2.update();
+                                renderer2.render(scene2, camera);
+
+                            }
+                            animate();
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon2').css('visibility', 'visible')
+                        })
+                    },
+                )
+
+                var NASADEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_YA_NASADEM', e)
+                const textureLoader3 = new THREE.TextureLoader();
+                textureLoader3.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene3, 'mesh_n_arrow')
+                        deleteMesh(scene3, 'mesh_nasa')
+
+                        fetch(NASADEM_WCS_UR).then(res => {
+                            return loadDEMFromGeoServer(res, scene3, camera, 'mesh_nasa')
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+
+                            function animate() {
+                                requestAnimationFrame(animate);
+                                control3.update();
+                                renderer3.render(scene3, camera);
+
+                            }
+                            animate();
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon3').css('visibility', 'visible')
+                        })
+                    },
+                )
+
+                var FABDEM_WCS_UR = createDEMWCSUrl('WCS_DEM:DEM_YA_FABDEM', e)
+                const textureLoader4 = new THREE.TextureLoader();
+                textureLoader4.load(
+                    dom_ya_URL,
+                    function (texture) {
+                        deleteMesh(scene4, 'mesh_n_arrow')
+                        deleteMesh(scene4, 'mesh_fab')
+
+                        fetch(FABDEM_WCS_UR).then(res => {
+                            return loadDEMFromGeoServer(res, scene4, camera, 'mesh_fab')
+                        }).then((mesh) => {
+                            mesh.material.map = texture
+                            mesh.material.side = THREE.DoubleSide
+                            mesh.material.needsUpdate = true
+
+                            function animate() {
+                                requestAnimationFrame(animate);
+                                control4.update();
+                                renderer4.render(scene4, camera);
+
+                            }
+                            animate();
+                        }).then(() => {
+                            layer.close(loadIndex)
+                            $('#treeCon4').css('visibility', 'visible')
+                        })
+                    },
+                )
+            })
+        }
+
+        $('#clo_con1').on('click', function () {
+            var ex_mesh = getMeshByName(scene1, 'mesh_cop')
+            if (ex_mesh) {
+                scene1.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon1').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#clo_con2').on('click', function () {
+            var ex_mesh = getMeshByName(scene2, 'mesh_alos')
+            if (ex_mesh) {
+                scene2.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon2').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#clo_con3').on('click', function () {
+            var ex_mesh = getMeshByName(scene3, 'mesh_nasa')
+            if (ex_mesh) {
+                scene3.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon3').css('visibility', 'hidden')
+            recTool.clear();
+        })
+
+        $('#clo_con4').on('click', function () {
+            var ex_mesh = getMeshByName(scene4, 'mesh_fab')
+            if (ex_mesh) {
+                scene4.remove(ex_mesh);
+                ex_mesh.geometry.dispose();
+                ex_mesh.material.dispose();
+            }
+            $('#treeCon4').css('visibility', 'hidden')
+            recTool.clear();
+        })
+    </script>
+</body>
+
+</html>

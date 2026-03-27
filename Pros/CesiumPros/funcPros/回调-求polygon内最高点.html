@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+    <style>
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        viewer.camera.changed.addEventListener(() => {
+            let heading = Cesium.Math.toDegrees(viewer.camera.heading).toFixed(2)
+            let pitch = Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(2)
+            let viewHeight = viewer.camera.positionCartographic.height.toFixed(2)
+            var positionCartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+            var longitude = Cesium.Math.toDegrees(positionCartographic.longitude).toFixed(2);
+            var latitude = Cesium.Math.toDegrees(positionCartographic.latitude).toFixed(2);
+            var height = positionCartographic.height.toFixed(2);
+            $("#c-heading").text(`heading:${heading}`)
+            $("#c-pitch").text(`pitch:${pitch}`)
+            $("#c-jd").text(`视角经度:${longitude}`)
+            $("#c-wd").text(`视角纬度:${latitude}`)
+            $("#c-height").text(`视角高度:${height}`)
+        })
+        // viewer.scene.globe.show = false;
+        viewer.scene.globe.depthTestAgainstTerrain = true
+
+        $.get("/Public/data/nature_reserve.json").then(function (data) {
+            var positionsList = []
+            data.features.forEach(feature => {
+                var positions = []
+                const pls = feature.geometry.rings[0]
+                var pts = []
+                pls.forEach(pl => {
+                    pts.push(pl[0])
+                    pts.push(pl[1])
+                })
+                const polygon = new Cesium.PolygonGeometry({
+                    polygonHierarchy: new Cesium.PolygonHierarchy(
+                        Cesium.Cartesian3.fromDegreesArray(pts)
+                    ),
+                    height: 4100
+                });
+                const geometry1 = Cesium.PolygonGeometry.createGeometry(polygon);
+                const myPrimitive1 = new Cesium.Primitive({
+                    geometryInstances: new Cesium.GeometryInstance({
+                        geometry: geometry1
+                    }),
+                    appearance: new Cesium.MaterialAppearance({
+                        material: Cesium.Material.fromType('Color', {
+                            color: Cesium.Color.fromAlpha(Cesium.Color.MEDIUMTURQUOISE, 0.2)
+                        }),
+                        faceForward: true
+                    })
+                })
+                // viewer.scene.primitives.add(myPrimitive1);
+                const mInstance = new Cesium.GeometryInstance({
+                    geometry: polygon,
+                    id: 'polygon',
+                });
+                const myPrimitive2 = new Cesium.GroundPrimitive({
+                    geometryInstances: mInstance,
+                    appearance: new Cesium.MaterialAppearance({
+                        material: Cesium.Material.fromType('Color', {
+                            color: Cesium.Color.fromAlpha(Cesium.Color.CHARTREUSE, 0.2)
+                        }),
+                        faceForward: true
+                    })
+                })
+                viewer.scene.primitives.add(myPrimitive2);
+                getPolygonExtentFromGeometry(polygon).forEach(point => {
+                    if (isPointInPolygonRayCasting(point, pls)) {
+                        var point_c = Cesium.Cartographic.fromDegrees(point[0], point[1])
+                        positions.push(point_c)
+                    }
+                })
+                positionsList.push(positions)
+            })
+            return positionsList
+        }).then(positionsList => {
+            positionsList.forEach(positions => {
+                const ellipsoid = Cesium.Ellipsoid.WGS84
+                getMaxHeight(positions).then(function (maxHeightPoint) {
+                    viewer.entities.add({
+                        position: ellipsoid.cartographicToCartesian(maxHeightPoint),
+                        point: {
+                            color: Cesium.Color.FIREBRICK,
+                            pixelSize: 6,
+                            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        },
+                        label: {
+                            text: `区域内最高点海拔:${maxHeightPoint.height.toFixed(1)}`,
+                            font: "12pt monospace",
+                            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                            pixelOffset: new Cesium.Cartesian2(0, -14),
+                            fillColor: Cesium.Color.BLACK,
+                            outlineColor: Cesium.Color.BLACK,
+                            showBackground: true,
+                            backgroundColor: new Cesium.Color(0.9, 0.9, 0.9, 0.7),
+                            backgroundPadding: new Cesium.Cartesian2(4, 3),
+                        },
+                    })
+                }),
+                getMinHeight(positions).then(function (minHeightPoint) {
+                    viewer.entities.add({
+                        position: ellipsoid.cartographicToCartesian(minHeightPoint),
+                        point: {
+                            color: Cesium.Color.DEEPSKYBLUE,
+                            pixelSize: 6,
+                            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        },
+                        label: {
+                            text: `区域内最低点海拔:${minHeightPoint.height.toFixed(1)}`,
+                            font: "12pt monospace",
+                            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                            pixelOffset: new Cesium.Cartesian2(0, -14),
+                            fillColor: Cesium.Color.BLACK,
+                            outlineColor: Cesium.Color.BLACK,
+                            showBackground: true,
+                            backgroundColor: new Cesium.Color(0.9, 0.9, 0.9, 0.7),
+                            backgroundPadding: new Cesium.Cartesian2(4, 3),
+                        },
+                    })
+                })
+            })
+
+        })
+
+
+        viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(
+                102.67, 30.14,
+                7453.21
+            ),
+            orientation: {
+                heading: Cesium.Math.toRadians(357.52),
+                pitch: Cesium.Math.toRadians(-36.91),
+                roll: 0.0,
+            },
+        });
+        // })
+
+    </script>
+    </div>
+</body>
+
+</html>

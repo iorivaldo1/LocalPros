@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="btn1">T</button>
+    <div id="treeCon1">
+        <button id="btn2">X</button>
+    </div>
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+
+        const originalGetType = T.Label.prototype.getType;
+        Object.defineProperty(T.Label.prototype, 'getType', {
+            value: function () {
+                const originalResult = originalGetType.call(this);
+                return originalResult + '!!!!';
+            },
+            writable: true,
+            configurable: true
+        });
+
+        const ml1 = new T.Label({
+            text: 'dddd',
+            position: new T.LngLat(103.01, 30)
+        })
+        map.addOverLay(ml1);
+        console.log(ml1.getType())
+
+    </script>
+</body>
+
+</html>

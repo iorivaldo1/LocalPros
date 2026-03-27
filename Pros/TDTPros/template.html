@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>TianDiTu</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #mapDiv {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getLocation {
+
+            position: absolute;
+            bottom: 50px;
+            left: 20px;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapDiv">
+        <button id="getLocation">定位</button>
+    </div>
+
+    <script type="module">
+        var map = new T.Map("mapDiv")
+        var zoom = 5;
+        map.centerAndZoom(new T.LngLat(103, 33), zoom);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        )
+        map.addControl(ctrl)
+        const marker = new T.Marker(new T.LngLat(0, 0));// 创建标注
+
+        $('#getLocation').on('click', function () {
+            navigator.geolocation.getCurrentPosition(function (pos) {
+                const jd = pos.coords.longitude; // 经度
+                const wd = pos.coords.latitude;   // 纬度
+                map.centerAndZoom(new T.LngLat(jd, wd), 18);
+                const point_lnglat = new T.LngLat(jd, wd)
+                marker.setLngLat(point_lnglat)
+                map.addOverLay(marker)
+
+                const label = new T.Label({
+                    text: `${jd.toFixed(5)},${wd.toFixed(5)}`,
+                    position: marker.getLngLat(),
+                    offset: new T.Point(3, -30),
+                });
+                map.addOverLay(label)
+            })
+        })
+    </script>
+</body>
+
+</html>

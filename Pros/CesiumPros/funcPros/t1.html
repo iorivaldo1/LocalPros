@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+
+<head>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+</head>
+
+<body>
+    <button id="t1">t</button>
+    <script>
+        function LatLon2XY(longitude, latitude) {
+            // 椭球参数
+            const a = 6378137.0;
+            const e2 = 0.0066943802013;
+
+            // 角度转弧度
+            const latitude2Rad = (Math.PI / 180.0) * latitude;
+
+            // 计算3度带带号和中央经线
+            const beltNo = Math.floor((longitude + 1.5) / 3.0);
+            const L = beltNo * 3;
+            const l0 = longitude - L; // 经差
+
+            // 辅助计算
+            const tsin = Math.sin(latitude2Rad);
+            const tcos = Math.cos(latitude2Rad);
+            const t = Math.tan(latitude2Rad);
+            const m = (Math.PI / 180.0) * l0 * tcos;
+            const et2 = e2 * Math.pow(tcos, 2);
+            const et3 = e2 * Math.pow(tsin, 2);
+
+            // 子午线弧长X
+            const X = 111132.9558 * latitude - 16038.64984 * Math.sin(2 * latitude2Rad) +
+                16.8610 * Math.sin(4 * latitude2Rad) - 0.024033 * Math.sin(6 * latitude2Rad);
+
+            // 卯酉圈曲率半径
+            const N = a / Math.sqrt(1 - et3);
+
+            // 计算平面坐标
+            const x = X + N * t * (
+                0.5 * Math.pow(m, 2) +
+                (5.0 - Math.pow(t, 2) + 9.0 * et2 + 4 * Math.pow(et2, 2)) * Math.pow(m, 4) / 24.0 +
+                (61.0 - 58.0 * Math.pow(t, 2) + Math.pow(t, 4)) * Math.pow(m, 6) / 720.0
+            );
+
+            const y = 500000 + N * (
+                m +
+                (1.0 - Math.pow(t, 2) + et2) * Math.pow(m, 3) / 6.0 +
+                (5.0 - 18.0 * Math.pow(t, 2) + Math.pow(t, 4) + 14.0 * et2 - 58.0 * et2 * Math.pow(t, 2)) * Math.pow(m, 5) / 120.0
+            );
+
+            return {
+                x: x,
+                y: y
+            };
+        }
+
+        function calculateProjectedDistance(point1, point2) {
+            // 将两点转换为平面坐标
+            const xy1 = LatLon2XY(point1[0], point1[1]);
+            const xy2 = LatLon2XY(point2[0], point2[1]);
+
+            // 计算平面直角坐标系中的距离
+            const dx = xy2.x - xy1.x;
+            const dy = xy2.y - xy1.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function calculatePolylineLength(polyline) {
+            if (polyline.length < 2) return 0;
+
+            let totalLength = 0;
+
+            for (let i = 1; i < polyline.length; i++) {
+                const segmentLength = calculateProjectedDistance(polyline[i - 1], polyline[i]);
+                totalLength += segmentLength;
+            }
+
+            return totalLength;
+        }
+        $('#t1').click(() => {
+            var len = calculatePolylineLength([[101.7, 30], [102.9, 30]])
+            console.log(len)
+
+            var p1 = LatLon2XY(102,30)
+            console.log(p1)
+        })
+         var p1 = LatLon2XY(102.549,31.145)
+            console.log(p1)
+    </script>
+</body>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        var viewer = new Cesium.Viewer("cesiumContainer", {
+            infoBox: false, //不设置会在浏览器F12报错
+            animation: false,
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+            geocoder: false, //控制右上角第一个位置的查找工具
+            homeButton: true, //控制右上角第二个位置的home图标
+            sceneModePicker: false, //控制右上角第三个位置的选择视角模式，2d，3d
+            baseLayerPicker: true, //控制右上角第四个位置的图层选择器
+            navigationHelpButton: false, //控制右上角第五个位置的导航帮助按钮
+            animation: false, //控制左下角的动画器件
+            timeline: false, //控制下方时间线
+            fullscreenButton: false, //右下角全屏按钮
+            skyAtmosphere: false, //天空背景
+            // baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+            //         Cesium.ArcGisMapServerImageryProvider.fromBasemapType(
+            //         Cesium.ArcGisBaseMapType.SATELLITE,
+            //     ),
+            // ),
+        });
+
+        const terrainProvider = await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl("https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer", {
+                token: "AAPK609af7fcb9cf4958849fcf480068447asZwSe6JgJNTu_KDzk69njW02iBtdOiZAgLAuv0r_R0q-fqsZyp5hmUjubneLo1f7"
+            });
+        viewer.terrainProvider = terrainProvider;
+
+    </script>
+    </div>
+</body>
+
+</html>

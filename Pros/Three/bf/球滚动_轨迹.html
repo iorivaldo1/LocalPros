@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script>
+        const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+camera.position.set(1, 5, 3);
+camera.lookAt(0, 0, 0);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const ambientLight = new THREE.AmbientLight(0x404040);
+scene.add(ambientLight);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(1, 1, 1);
+scene.add(directionalLight);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+//-----------------------------------
+// 创建平面
+const plane_geometry = new THREE.PlaneGeometry(5, 5, 50, 50);
+const planeMaterial = new THREE.MeshPhongMaterial({
+    color: '#6a5d31',
+    side: THREE.DoubleSide
+});
+
+const plane = new THREE.Mesh(plane_geometry, planeMaterial);
+plane.rotateX(-Math.PI / 2);
+scene.add(plane);
+
+//-----------------------------------
+// 创建球体
+const ballGeometry = new THREE.SphereGeometry(0.15, 32, 32);
+const ballMaterial = new THREE.MeshPhongMaterial({
+    color: '#ff5555',
+    shininess: 100
+});
+const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+ball.position.y = 0.15;
+scene.add(ball);
+
+//-----------------------------------
+// 创建轨迹线系统 - 简单直接的方法
+const maxTrailPoints = 100;
+let trailPoints = [];
+let trailLine = null;
+
+// 创建轨迹线的几何体
+const trailGeometry = new THREE.BufferGeometry();
+const trailPositions = new Float32Array(maxTrailPoints * 3);
+
+// 初始化位置为0
+for (let i = 0; i < maxTrailPoints * 3; i++) {
+    trailPositions[i] = 0;
+}
+
+trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+
+// 创建轨迹线材质
+const trailMaterial = new THREE.LineBasicMaterial({
+    color: 0x00ffff,
+    linewidth: 3,
+    transparent: true,
+    opacity: 0.8
+});
+
+// 创建轨迹线
+trailLine = new THREE.Line(trailGeometry, trailMaterial);
+trailLine.position.y = 0.05; // 稍微高于平面
+scene.add(trailLine);
+
+//-----------------------------------
+// 创建轨迹点系统（额外效果）
+const trailPointGeometry = new THREE.BufferGeometry();
+const trailPointPositions = new Float32Array(maxTrailPoints * 3);
+const trailPointColors = new Float32Array(maxTrailPoints * 3);
+
+for (let i = 0; i < maxTrailPoints; i++) {
+    trailPointPositions[i * 3] = 0;
+    trailPointPositions[i * 3 + 1] = 0.05;
+    trailPointPositions[i * 3 + 2] = 0;
+    
+    // 设置颜色从青色到透明
+    trailPointColors[i * 3] = 0.0;     // R
+    trailPointColors[i * 3 + 1] = 1.0; // G
+    trailPointColors[i * 3 + 2] = 1.0; // B
+}
+
+trailPointGeometry.setAttribute('position', new THREE.BufferAttribute(trailPointPositions, 3));
+trailPointGeometry.setAttribute('color', new THREE.BufferAttribute(trailPointColors, 3));
+
+const trailPointMaterial = new THREE.PointsMaterial({
+    size: 0.08,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending
+});
+
+const trailPointsMesh = new THREE.Points(trailPointGeometry, trailPointMaterial);
+scene.add(trailPointsMesh);
+
+//-----------------------------------
+// 轨迹管理
+let trailIndex = 0;
+const trailHistory = [];
+
+function updateTrail(x, z) {
+    // 更新轨迹线
+    trailPositions[trailIndex * 3] = x;
+    trailPositions[trailIndex * 3 + 1] = 0.05;
+    trailPositions[trailIndex * 3 + 2] = z;
+    
+    // 更新轨迹点
+    trailPointPositions[trailIndex * 3] = x;
+    trailPointPositions[trailIndex * 3 + 1] = 0.05;
+    trailPointPositions[trailIndex * 3 + 2] = z;
+    
+    // 存储历史位置
+    trailHistory.push({ x, z, time: Date.now() });
+    
+    // 如果历史记录太长，移除旧的
+    if (trailHistory.length > maxTrailPoints) {
+        trailHistory.shift();
+    }
+    
+    // 更新几何体
+    trailGeometry.attributes.position.needsUpdate = true;
+    trailPointGeometry.attributes.position.needsUpdate = true;
+    
+    // 移动索引
+    trailIndex = (trailIndex + 1) % maxTrailPoints;
+    
+    // 更新线条的连接
+    const indices = [];
+    for (let i = 0; i < Math.min(trailHistory.length, maxTrailPoints); i++) {
+        indices.push(i);
+    }
+    trailGeometry.setIndex(indices);
+}
+
+//-----------------------------------
+// 添加网格辅助
+const gridHelper = new THREE.GridHelper(5, 10, 0x888888, 0x444444);
+gridHelper.position.y = -0.01;
+scene.add(gridHelper);
+
+//-----------------------------------
+// 信息显示
+const infoDiv = document.createElement('div');
+infoDiv.style.cssText = `
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    background: rgba(0,0,0,0.7);
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    z-index: 1000;
+`;
+document.body.appendChild(infoDiv);
+
+//-----------------------------------
+// 动画循环
+let lastUpdateTime = 0;
+const updateInterval = 50; // 每50ms更新一次轨迹
+
+function animate(time) {
+    requestAnimationFrame(animate);
+    
+    const currentTime = time * 0.001;
+    
+    // 计算球体位置（圆周运动）
+    const speed = 1.0;
+    const radius = 2.0;
+    const ballX = Math.cos(currentTime * speed) * radius;
+    const ballZ = Math.sin(currentTime * speed * 0.7) * radius;
+    
+    // 更新球体位置
+    ball.position.x = ballX;
+    ball.position.z = ballZ;
+    ball.position.y = 0.15 + Math.sin(currentTime * 2) * 0.05;
+    
+    // 定期更新轨迹
+    if (time - lastUpdateTime > updateInterval) {
+        updateTrail(ballX, ballZ);
+        lastUpdateTime = time;
+    }
+    
+    // 渲染场景
+    renderer.render(scene, camera);
+    controls.update();
+    
+    // 更新信息显示
+    infoDiv.innerHTML = `
+        球体轨迹模拟<br>
+        位置: (${ballX.toFixed(2)}, ${ballZ.toFixed(2)})<br>
+        轨迹点数: ${trailHistory.length}<br>
+        轨迹颜色: 青色
+    `;
+}
+
+//-----------------------------------
+// 点击交互
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+window.addEventListener('click', (event) => {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(plane);
+    
+    if (intersects.length > 0) {
+        const point = intersects[0].point;
+        
+        // 在点击位置创建圆形轨迹
+        for (let i = 0; i < 20; i++) {
+            const angle = (i / 20) * Math.PI * 2;
+            const r = 0.3;
+            const x = point.x + Math.cos(angle) * r;
+            const z = point.z + Math.sin(angle) * r;
+            updateTrail(x, z);
+        }
+        
+        // 添加临时标记
+        const markerGeometry = new THREE.SphereGeometry(0.08, 16, 16);
+        const markerMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.6
+        });
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.position.copy(point);
+        marker.position.y = 0.08;
+        scene.add(marker);
+        
+        // 2秒后移除标记
+        setTimeout(() => {
+            scene.remove(marker);
+            markerGeometry.dispose();
+            markerMaterial.dispose();
+        }, 2000);
+    }
+});
+
+//-----------------------------------
+// 键盘控制
+window.addEventListener('keydown', (event) => {
+    switch(event.key) {
+        case ' ':
+            // 空格键清除轨迹
+            trailHistory.length = 0;
+            trailIndex = 0;
+            
+            // 重置位置数据
+            for (let i = 0; i < maxTrailPoints * 3; i++) {
+                trailPositions[i] = 0;
+                trailPointPositions[i] = 0;
+            }
+            
+            trailGeometry.attributes.position.needsUpdate = true;
+            trailPointGeometry.attributes.position.needsUpdate = true;
+            trailGeometry.setIndex([]); // 清空线条连接
+            break;
+            
+        case 'r':
+            // R键重置视角
+            controls.reset();
+            break;
+            
+        case 'c':
+            // C键切换轨迹颜色
+            const colors = [0x00ffff, 0xff00ff, 0xffff00, 0xff8800];
+            const currentColor = trailMaterial.color.getHex();
+            const nextIndex = (colors.indexOf(currentColor) + 1) % colors.length;
+            trailMaterial.color.setHex(colors[nextIndex]);
+            break;
+    }
+});
+
+//-----------------------------------
+// 窗口大小调整
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+//-----------------------------------
+// 添加帮助说明
+const helpDiv = document.createElement('div');
+helpDiv.style.cssText = `
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    color: white;
+    background: rgba(0,0,0,0.5);
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 11px;
+    z-index: 1000;
+`;
+helpDiv.innerHTML = `
+    控制说明:<br>
+    空格键 - 清除轨迹<br>
+    R键 - 重置视角<br>
+    C键 - 切换轨迹颜色<br>
+    点击平面 - 在点击位置添加轨迹
+`;
+document.body.appendChild(helpDiv);
+
+//-----------------------------------
+// 启动动画
+animate(0);
+
+//-----------------------------------
+// 初始化：先添加几个轨迹点
+setTimeout(() => {
+    // 添加初始轨迹点
+    for (let i = 0; i < 10; i++) {
+        const angle = (i / 10) * Math.PI * 2;
+        const x = Math.cos(angle) * 2.0;
+        const z = Math.sin(angle) * 2.0;
+        updateTrail(x, z);
+    }
+}, 100);
+    </script>
+</body>
+
+</html>

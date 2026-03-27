@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/exif.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #cesiumContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+
+        #fileInput {
+            position: absolute;
+            top: 50px;
+            right: 5px;
+            background-color: white;
+            z-index: 1;
+        }
+
+        .preview-img {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            margin-top: 40px;
+            z-index: 1;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <img id="preview" class="preview-img" alt="图片预览">
+    <input type="file" id="fileInput" accept=".jpg">
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE"
+        const viewer = new Cesium.Viewer("cesiumContainer", {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+        viewer.camera.changed.addEventListener(() => {
+            let heading = Cesium.Math.toDegrees(viewer.camera.heading).toFixed(2)
+            let pitch = Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(2)
+            let viewHeight = viewer.camera.positionCartographic.height.toFixed(2)
+            var positionCartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+            var longitude = Cesium.Math.toDegrees(positionCartographic.longitude).toFixed(2);
+            var latitude = Cesium.Math.toDegrees(positionCartographic.latitude).toFixed(2);
+            var height = positionCartographic.height.toFixed(2);
+            $("#c-heading").text(`heading:${heading}`)
+            $("#c-pitch").text(`pitch:${pitch}`)
+            $("#c-jd").text(`视角经度:${longitude}`)
+            $("#c-wd").text(`视角纬度:${latitude}`)
+            $("#c-height").text(`视角高度:${height}`)
+        })
+
+        var tiandituModel = new Cesium.ProviderViewModel({
+            name: "天地图影像",
+            tooltip: "天地图影像及中文标注数据",
+
+            iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/tdtLOGO.png'),
+            creationFunction: function () {
+                var mapsources = [];
+                var yx = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "http://t0.tianditu.com/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=be50c7492442ecf4e61ca7bd578d6b8b",
+                    layer: "tdtBasicLayer",
+                    style: "default",
+                    format: "image/jpeg",
+                    tileMatrixSetID: "GoogleMapsCompatible",
+                    show: false
+                })
+                var zj = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "http://t0.tianditu.gov.cn/cia_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=cia&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=be50c7492442ecf4e61ca7bd578d6b8b",
+                    layer: "tiandituImgMarker",
+                    style: "default",
+                    format: "image/jpeg",
+                    tileMatrixSetID: "tiandituImgMarker",
+                    show: true,
+                    maximumLevel: 16
+                })
+                mapsources.push(yx, zj);
+                return mapsources;
+            }
+        });
+        viewer.baseLayerPicker.viewModel.imageryProviderViewModels.push(tiandituModel)
+
+        var toomapModel = new Cesium.ProviderViewModel({
+            name: "tooMap",
+            tooltip: "tooMap",
+            iconUrl: Cesium.buildModuleUrl("Widgets/Images/ImageryProviders/toomap.png"),
+            creationFunction: function () {
+                var mapsources = [];
+                var yx = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "https://www.scgis.net/services/newtianditudom/WMTS?ak=2d2ff68e27AXNpzlye66b334f70181f1",
+                    layer: "defaultLayer",
+                    style: "default",
+                    format: "image/png",
+                    tileMatrixSetID: "GetTileMatrix",
+                    crs: "EPSG:4326",
+                    tileMatrixLabels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17'],
+                    tilingScheme: new Cesium.GeographicTilingScheme(),
+                    minimumLevel: 1,
+                    maximumLevel: 18,
+                })
+                var zj = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "https://www.scgis.net/services/newtianditudomdlg/WMTS?ak=2d2ff68e27AXNpzlye66b334f70181f1",
+                    layer: "defaultLayer",
+                    style: "default",
+                    format: "image/png",
+                    tileMatrixSetID: "GetTileMatrix",
+                    crs: "EPSG:4326",
+                    tileMatrixLabels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17'],
+                    tilingScheme: new Cesium.GeographicTilingScheme(),
+                    minimumLevel: 1,
+                    maximumLevel: 18,
+                })
+                mapsources.push(yx, zj);
+                return mapsources;
+            }
+        });
+        viewer.baseLayerPicker.viewModel.imageryProviderViewModels.push(toomapModel)
+
+        $('#fileInput').on('change', HD1)
+        function HD1() {
+            viewer.entities.removeAll()
+
+            const preview = $('#preview');
+            preview.hide();
+
+            const file = event.target.files[0]
+            EXIF.getData(file, function () {
+                const allExifData = EXIF.getAllTags(this);
+                const jd_du = allExifData.GPSLongitude[0]
+                const jd_fen = allExifData.GPSLongitude[1] / 60
+                const jd_miao_a = Math.floor(Number(allExifData.GPSLongitude[2])) / 3600
+                const jd_mian_b = ((Number(allExifData.GPSLongitude[2])) % 1) / 360000
+                const jd = jd_du + jd_fen + jd_miao_a + jd_mian_b
+
+                const wd_du = allExifData.GPSLatitude[0]
+                const wd_fen = allExifData.GPSLatitude[1] / 60
+                const wd_miao_a = Math.floor(Number(allExifData.GPSLatitude[2])) / 3600
+                const wd_miao_b = ((Number(allExifData.GPSLatitude[2])) % 1) / 360000
+                const wd = wd_du + wd_fen + wd_miao_a + wd_miao_b
+                viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(jd, wd),
+                    point: {
+                        color: Cesium.Color.FIREBRICK,
+                        pixelSize: 6,
+                        outlineColor: Cesium.Color.DARKSLATEGREY,
+                        outlineWidth: 3,
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                    },
+                })
+                viewer.camera.setView({
+                    destination: Cesium.Cartesian3.fromDegrees(jd, wd, 9400),
+                });
+
+
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    preview.attr('src', e.target.result);
+                    preview.show();
+                };
+                reader.readAsDataURL(file);
+            })
+        }
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/testProperty.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+    <style>
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+
+    <script>
+        var viewer = new Cesium.Viewer("cesiumContainer", {
+            infoBox: false, //不设置会在浏览器F12报错
+            animation: false,
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+            geocoder: false, //控制右上角第一个位置的查找工具
+            homeButton: true, //控制右上角第二个位置的home图标
+            sceneModePicker: false, //控制右上角第三个位置的选择视角模式，2d，3d
+            baseLayerPicker: true, //控制右上角第四个位置的图层选择器
+            navigationHelpButton: false, //控制右上角第五个位置的导航帮助按钮
+            animation: false, //控制左下角的动画器件
+            timeline: false, //控制下方时间线
+            fullscreenButton: false, //右下角全屏按钮
+        });
+
+        viewer.camera.changed.addEventListener(() => {
+            let heading = viewer.camera.heading.toFixed(2)
+            let pitch = viewer.camera.pitch.toFixed(2)
+            let viewHeight = viewer.camera.positionCartographic.height.toFixed(2)
+            var positionCartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+            var longitude = Cesium.Math.toDegrees(positionCartographic.longitude).toFixed(2);
+            var latitude = Cesium.Math.toDegrees(positionCartographic.latitude).toFixed(2);
+            var height = positionCartographic.height.toFixed(2);
+            $("#c-heading").text(`heading:${heading}`)
+            $("#c-pitch").text(`pitch:${pitch}`)
+            $("#c-jd").text(`视角经度:${longitude}`)
+            $("#c-wd").text(`视角纬度:${latitude}`)
+            $("#c-height").text(`视角高度:${height}`)
+
+        })
+
+        viewer._cesiumWidget._creditContainer.style.display = "none";
+
+        viewer.entities.add({
+            position: Cesium.Cartesian3.fromDegrees(113.54, 22.94,1050),
+            name: '轨迹球体',
+            ellipsoid: {
+                radii: new Cesium.Cartesian3(1000.0, 1000.0, 1000.0),
+                material: new Cesium.TestProperty({
+                    color: new Cesium.Color(1.0, 1.0, 0.0, 0.4),
+                    speed: 10.0
+                })
+            }
+        })
+
+        viewer.entities.add({
+            position: Cesium.Cartesian3.fromDegrees(113.41, 22.94, 1050),
+            name: '轨迹球体2',
+            ellipsoid: {
+                radii: new Cesium.Cartesian3(1000.0, 1000.0, 1000.0),
+                material: new Cesium.EllipsoidTrailMaterialProperty({
+                    color: new Cesium.Color(1.0, 1.0, 0.0, 0.4),
+                    speed: 10.0
+                })
+            }
+        })
+
+        viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(
+                113.68,
+                22.88,
+                10000
+            ),
+            orientation: {
+                heading: 5.19,
+                pitch: -0.42,
+            },
+        })
+    </script>
+
+
+</body>
+
+</html>

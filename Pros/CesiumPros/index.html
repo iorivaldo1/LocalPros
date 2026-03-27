@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <!-- <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="./Build/Cesium/Cesium.js"></script>
+    <script src="./jquery-3.7.1.min.js"></script>
+    <script src="./exif.js"></script>
+    <link rel="stylesheet" href="./Build/Cesium/Widgets/widgets.css">
+    <link rel="icon" href="./H.ico"> -->
+
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script type="text/javascript" src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/exif.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #cesiumContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+
+        #fileInput {
+            position: absolute;
+            top: 50px;
+            right: 5px;
+            background-color: white;
+            z-index: 9999;
+        }
+
+        .preview-container {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+            z-index: 9999;
+            max-width: 520px;
+        }
+
+        .preview-container.active {
+            display: block;
+        }
+
+        .preview-img-item {
+            width: 500px;
+            height: 500px;
+            margin-bottom: 10px;
+            border: 2px solid #3085d6;
+            border-radius: 3px;
+            display: block;
+            object-fit: contain;
+            background-color: #000;
+        }
+
+        .preview-info {
+            color: white;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .cesium-credit-logo {
+    display: none !important;
+}
+
+        #locationBtn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: #fff;
+            border: 2px solid #3085d6;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        #locationBtn:hover {
+            background-color: #3085d6;
+            transform: scale(1.1);
+        }
+
+        #locationBtn:hover svg {
+            fill: #fff;
+        }
+
+        #locationBtn svg {
+            width: 24px;
+            height: 24px;
+            fill: #3085d6;
+            transition: fill 0.3s ease;
+        }
+
+        #locationBtn.loading {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+    </style>
+</head>
+
+<body>
+   <div class="preview-container" id="previewContainer">
+        <div class="preview-info" id="previewInfo"></div>
+        <img id="preview" class="preview-img-item" alt="图片预览">
+    </div>
+    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png" multiple>
+    <button id="locationBtn" title="定位到当前位置">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+        </svg>
+    </button>
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE"
+        const viewer = new Cesium.Viewer("cesiumContainer", {
+            infoBox: false, //不设置会在浏览器F12报错
+            animation: false,
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+            geocoder: false, //控制右上角第一个位置的查找工具
+            homeButton: true, //控制右上角第二个位置的home图标
+            sceneModePicker: false, //控制右上角第三个位置的选择视角模式，2d，3d
+            baseLayerPicker: true, //控制右上角第四个位置的图层选择器
+            navigationHelpButton: false, //控制右上角第五个位置的导航帮助按钮
+            animation: false, //控制左下角的动画器件
+            timeline: false, //控制下方时间线
+            fullscreenButton: false, //右下角全屏按钮
+            skyAtmosphere: false, //天空背景
+        });
+        viewer.camera.changed.addEventListener(() => {
+            let heading = Cesium.Math.toDegrees(viewer.camera.heading).toFixed(2)
+            let pitch = Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(2)
+            let viewHeight = viewer.camera.positionCartographic.height.toFixed(2)
+            var positionCartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+            var longitude = Cesium.Math.toDegrees(positionCartographic.longitude).toFixed(2);
+            var latitude = Cesium.Math.toDegrees(positionCartographic.latitude).toFixed(2);
+            var height = positionCartographic.height.toFixed(2);
+            $("#c-heading").text(`heading:${heading}`)
+            $("#c-pitch").text(`pitch:${pitch}`)
+            $("#c-jd").text(`视角经度:${longitude}`)
+            $("#c-wd").text(`视角纬度:${latitude}`)
+            $("#c-height").text(`视角高度:${height}`)
+        })
+
+        var tiandituModel = new Cesium.ProviderViewModel({
+            name: "天地图影像",
+            tooltip: "天地图影像及中文标注数据",
+
+            iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/tdtLOGO.png'),
+            creationFunction: function () {
+                var mapsources = [];
+                var yx = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "http://t0.tianditu.com/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=be50c7492442ecf4e61ca7bd578d6b8b",
+                    layer: "tdtBasicLayer",
+                    style: "default",
+                    format: "image/jpeg",
+                    tileMatrixSetID: "GoogleMapsCompatible",
+                    show: false
+                })
+                var zj = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "http://t0.tianditu.gov.cn/cia_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=cia&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=be50c7492442ecf4e61ca7bd578d6b8b",
+                    layer: "tiandituImgMarker",
+                    style: "default",
+                    format: "image/jpeg",
+                    tileMatrixSetID: "tiandituImgMarker",
+                    show: true,
+                    maximumLevel: 16
+                })
+                mapsources.push(yx, zj);
+                return mapsources;
+            }
+        });
+        viewer.baseLayerPicker.viewModel.imageryProviderViewModels.push(tiandituModel)
+
+        var toomapModel = new Cesium.ProviderViewModel({
+            name: "tooMap",
+            tooltip: "tooMap",
+            iconUrl: Cesium.buildModuleUrl("Widgets/Images/ImageryProviders/toomap.png"),
+            creationFunction: function () {
+                var mapsources = [];
+                var yx = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "https://www.scgis.net/services/newtianditudom/WMTS?ak=2d2ff68e27AXNpzlye66b334f70181f1",
+                    layer: "defaultLayer",
+                    style: "default",
+                    format: "image/png",
+                    tileMatrixSetID: "GetTileMatrix",
+                    crs: "EPSG:4326",
+                    tileMatrixLabels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17'],
+                    tilingScheme: new Cesium.GeographicTilingScheme(),
+                    minimumLevel: 1,
+                    maximumLevel: 18,
+                })
+                var zj = new Cesium.WebMapTileServiceImageryProvider({
+                    url: "https://www.scgis.net/services/newtianditudomdlg/WMTS?ak=2d2ff68e27AXNpzlye66b334f70181f1",
+                    layer: "defaultLayer",
+                    style: "default",
+                    format: "image/png",
+                    tileMatrixSetID: "GetTileMatrix",
+                    crs: "EPSG:4326",
+                    tileMatrixLabels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17'],
+                    tilingScheme: new Cesium.GeographicTilingScheme(),
+                    minimumLevel: 1,
+                    maximumLevel: 18,
+                })
+                mapsources.push(yx, zj);
+                return mapsources;
+            }
+        });
+        viewer.baseLayerPicker.viewModel.imageryProviderViewModels.push(toomapModel)
+
+        $('#fileInput').on('change', HD1)
+        
+        // 存储所有照片信息的数据结构
+        var photosData = {};
+        var currentPhotoId = null;
+
+        function HD1() {
+            viewer.entities.removeAll()
+            $('#previewContainer').removeClass('active');
+            photosData = {}; // 清空旧数据
+            currentPhotoId = null;
+            
+            const files = event.target.files;
+            
+            if (!files || files.length === 0) return;
+
+            let processedCount = 0;
+            
+            // 处理每张照片
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                
+                // 使用 FileReader 先读取文件内容
+                const fileReader = new FileReader();
+                fileReader.onload = function(fileEvent) {
+                    // EXIF数据读取
+                    EXIF.getData(file, function () {
+                        const allExifData = EXIF.getAllTags(this);
+                        
+                        // 检查是否有GPS信息
+                        if (!allExifData.GPSLongitude || !allExifData.GPSLatitude) {
+                            console.warn(`图片 ${file.name} 没有GPS信息，已跳过`);
+                            processedCount++;
+                            return;
+                        }
+
+                        // 计算经度
+                        const jd_du = allExifData.GPSLongitude[0];
+                        const jd_fen = allExifData.GPSLongitude[1] / 60;
+                        const jd_miao_a = Math.floor(Number(allExifData.GPSLongitude[2])) / 3600;
+                        const jd_mian_b = ((Number(allExifData.GPSLongitude[2])) % 1) / 360000;
+                        const jd = jd_du + jd_fen + jd_miao_a + jd_mian_b;
+
+                        // 计算纬度
+                        const wd_du = allExifData.GPSLatitude[0];
+                        const wd_fen = allExifData.GPSLatitude[1] / 60;
+                        const wd_miao_a = Math.floor(Number(allExifData.GPSLatitude[2])) / 3600;
+                        const wd_miao_b = ((Number(allExifData.GPSLatitude[2])) % 1) / 360000;
+                        const wd = wd_du + wd_fen + wd_miao_a + wd_miao_b;
+
+                        // 生成唯一ID
+                        const photoId = `photo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                        // 保存照片数据 - 使用 fileEvent 中的 DataURL
+                        photosData[photoId] = {
+                            src: fileEvent.target.result,
+                            fileName: file.name,
+                            latitude: wd,
+                            longitude: jd,
+                            timestamp: new Date().toLocaleString()
+                        };
+
+
+                        // 添加标记点
+                        viewer.entities.add({
+                            id: photoId,
+                            position: Cesium.Cartesian3.fromDegrees(jd, wd),
+                            point: {
+                                color: Cesium.Color.FIREBRICK,
+                                pixelSize: 8,
+                                outlineColor: Cesium.Color.DARKSLATEGREY,
+                                outlineWidth: 3,
+                                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            },
+                            // label: {
+                            //     text: file.name,
+                            //     font: '12px sans-serif',
+                            //     fillColor: Cesium.Color.WHITE,
+                            //     style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                            //     outlineWidth: 2,
+                            //     verticalOrigin: Cesium.VerticalOrigin.TOP,
+                            //     pixelOffset: new Cesium.Cartesian2(0, 15),
+                            //     heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                            //     disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            // }
+                        });
+
+                        processedCount++;
+                        
+                        // 所有照片处理完毕后，飞行到第一个标记点
+                        if (processedCount === files.length) {
+                            const firstPhotoId = Object.keys(photosData)[0];
+                            if (firstPhotoId) {
+                                const photo = photosData[firstPhotoId];
+                                viewer.camera.setView({
+                                    destination: Cesium.Cartesian3.fromDegrees(photo.longitude, photo.latitude, 9400),
+                                });
+                            }
+                        }
+                    });
+                };
+                fileReader.readAsDataURL(file);
+            }
+        }
+
+        // 处理标记点的点击事件
+        const handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
+        handler.setInputAction(function (click) {
+            const pickedObject = viewer.scene.pick(click.position);
+            
+            if (!Cesium.defined(pickedObject) || !pickedObject.id) {
+                $('#previewContainer').removeClass('active');
+                currentPhotoId = null;
+                return;
+            }
+
+            // pickedObject.id 是 Entity 对象，需要获取其 id 属性（字符串）
+            const entity = pickedObject.id;
+            const photoId = entity.id || entity._id;
+            
+            
+            if (!photosData[photoId]) {
+                console.warn('未找到对应的照片数据，photoId:', photoId);
+                return;
+            }
+
+            const photo = photosData[photoId];
+
+            // 切换显示/隐藏
+            if (currentPhotoId === photoId && $('#previewContainer').hasClass('active')) {
+                // 点击同一个点，隐藏图片
+                $('#previewContainer').removeClass('active');
+                currentPhotoId = null;
+            } else {
+                // 显示新的图片
+                $('#preview').attr('src', photo.src);
+                $('#previewInfo').text(`文件: ${photo.fileName} | 坐标: (${photo.latitude.toFixed(6)}, ${photo.longitude.toFixed(6)}) | 时间: ${photo.timestamp}`);
+                $('#previewContainer').addClass('active');
+                currentPhotoId = photoId;
+            }
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        // 定位按钮功能
+        $('#locationBtn').on('click', function() {
+            const btn = $(this);
+            
+            // 检查是否为HTTPS环境
+            const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost';
+            
+            // 检查浏览器是否支持地理定位
+            if (!navigator.geolocation) {
+                alert('您的浏览器不支持地理定位功能');
+                return;
+            }
+            
+            // 如果不是安全上下文，提示用户并使用IP定位
+            if (!isSecureContext) {
+                if (confirm('当前为HTTP环境，浏览器限制了GPS定位。\n\n是否使用IP定位？（精度较低，误差可能在城市级别）')) {
+                    useIPLocation(btn);
+                } else {
+                    alert('提示：请使用HTTPS协议访问以启用精确GPS定位');
+                }
+                return;
+            }
+            
+            btn.addClass('loading');
+            
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    // 成功获取位置
+                    const longitude = position.coords.longitude;
+                    const latitude = position.coords.latitude;
+                    const accuracy = position.coords.accuracy;
+                    
+                    // 移除当前定位点（如果存在）
+                    viewer.entities.removeById('currentLocation');
+                    
+                    // 添加定位点
+                    viewer.entities.add({
+                        id: 'currentLocation',
+                        position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
+                        point: {
+                            color: Cesium.Color.BLUE,
+                            pixelSize: 10,
+                            outlineColor: Cesium.Color.WHITE,
+                            outlineWidth: 3,
+                            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        },
+                        label: {
+                            text: '当前位置',
+                            font: '14px sans-serif',
+                            fillColor: Cesium.Color.WHITE,
+                            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                            outlineWidth: 2,
+                            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                            pixelOffset: new Cesium.Cartesian2(0, -15),
+                            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        }
+                    });
+                    
+                    // 飞行到定位点
+                    viewer.camera.flyTo({
+                        destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 5000),
+                        duration: 2,
+                        orientation: {
+                            heading: Cesium.Math.toRadians(0),
+                            pitch: Cesium.Math.toRadians(-45),
+                            roll: 0.0
+                        }
+                    });
+                    
+                    btn.removeClass('loading');
+                },
+                function(error) {
+                    // 定位失败
+                    btn.removeClass('loading');
+                    let errorMsg = '';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMsg = '用户拒绝了地理定位请求';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMsg = '位置信息不可用';
+                            break;
+                        case error.TIMEOUT:
+                            errorMsg = '获取位置信息超时';
+                            break;
+                        default:
+                            errorMsg = '未知错误';
+                            break;
+                    }
+                    alert('定位失败：' + errorMsg);
+                    console.error('定位错误：', error);
+                },
+                {
+                    enableHighAccuracy: true,  // 启用高精度定位
+                    timeout: 10000,            // 10秒超时
+                    maximumAge: 0              // 不使用缓存位置
+                }
+            );
+        });
+
+        // IP定位功能（备用方案）
+        function useIPLocation(btn) {
+            btn.addClass('loading');
+            
+            // 使用免费IP定位服务（多个备选）
+            fetch('https://ipapi.co/json/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.latitude && data.longitude) {
+                        const longitude = data.longitude;
+                        const latitude = data.latitude;
+                        const city = data.city || '未知城市';
+                        const country = data.country_name || '未知国家';
+                        
+                        console.log('IP定位结果：', {
+                            经度: longitude,
+                            纬度: latitude,
+                            城市: city,
+                            国家: country,
+                            IP: data.ip
+                        });
+                        
+                        // 移除当前定位点
+                        viewer.entities.removeById('currentLocation');
+                        
+                        // 添加定位点
+                        viewer.entities.add({
+                            id: 'currentLocation',
+                            position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
+                            point: {
+                                color: Cesium.Color.ORANGE,
+                                pixelSize: 10,
+                                outlineColor: Cesium.Color.WHITE,
+                                outlineWidth: 3,
+                                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            },
+                            label: {
+                                text: `IP定位: ${city}`,
+                                font: '14px sans-serif',
+                                fillColor: Cesium.Color.WHITE,
+                                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                                outlineWidth: 2,
+                                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                                pixelOffset: new Cesium.Cartesian2(0, -15),
+                                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            }
+                        });
+                        
+                        // 飞行到定位点
+                        viewer.camera.flyTo({
+                            destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 50000),
+                            duration: 2,
+                            orientation: {
+                                heading: Cesium.Math.toRadians(0),
+                                pitch: Cesium.Math.toRadians(-45),
+                                roll: 0.0
+                            }
+                        });
+                        
+                        btn.removeClass('loading');
+                    } else {
+                        throw new Error('IP定位数据不完整');
+                    }
+                })
+                .catch(error => {
+                    console.error('IP定位失败：', error);
+                    // 尝试备用API
+                    fetch('https://api.ipify.org?format=json')
+                        .then(response => response.json())
+                        .then(data => {
+                            alert('IP定位服务不可用。\n\n请联系管理员配置HTTPS以使用GPS精确定位。\n\n您的IP地址：' + data.ip);
+                        })
+                        .catch(() => {
+                            alert('IP定位服务不可用。\n\n请联系管理员配置HTTPS以使用GPS精确定位。');
+                        })
+                        .finally(() => {
+                            btn.removeClass('loading');
+                        });
+                });
+        }
+
+    </script>
+</body>
+
+</html>

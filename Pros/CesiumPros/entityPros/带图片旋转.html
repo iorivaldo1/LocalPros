@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="../../Public/Build/Cesium/Cesium.js"></script>
+    <script src="../../Public/js/jquery-3.7.1.min.js"></script>
+    <script src="../../Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="../../Public/Build/Cesium/Widgets/widgets.css">
+
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        let rotation = Cesium.Math.toRadians(30);
+        function getRotationValue() {
+            rotation += 0.005;
+            return rotation;
+        }
+        viewer.entities.add({
+            name: "Rotating rectangle with rotating texture coordinate",
+            rectangle: {
+                coordinates: Cesium.Rectangle.fromDegrees(100.0, 25.0, 120, 40.0),
+                // material: new Cesium.Color(1.0, 1.0, 0.0, 1.0),
+                material: new Cesium.ImageMaterialProperty({
+                    image: "/Public/imgs/lake-bib.png"
+                }),
+                rotation: new Cesium.CallbackProperty(getRotationValue, false),
+                stRotation: new Cesium.CallbackProperty(getRotationValue, false),
+                classificationType: Cesium.ClassificationType.TERRAIN,
+            },
+        });
+
+        viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(
+                86.33, 13.31,
+                4295400
+            ),
+            orientation: {
+                heading: Cesium.Math.toRadians(33.74),
+                pitch: Cesium.Math.toRadians(-64.57),
+                roll: 0.0,
+            },
+        });
+    </script>
+    </div>
+</body>
+
+</html>

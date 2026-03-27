@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+    <style>
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        regCameraInfo(viewer);
+        const m_entity = viewer.entities.add({
+            name: "board",
+            polygon: {
+                hierarchy: Cesium.Cartesian3.fromDegreesArrayHeights([
+                    100, 30, 10000,
+                    
+                    102, 30, 10000,
+                    
+                    102, 30, 50000,
+                    100, 30, 50000,
+                ]),
+                perPositionHeight: true,
+                // material: Cesium.Color.CYAN.withAlpha(0.5),
+                material: new Cesium.ImageMaterialProperty({
+                    image:"/Public/imgs/lake-bib.png"
+                }),
+                outline: true,
+                outlineColor: Cesium.Color.BLACK,
+            },
+        });
+
+
+        viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(
+                86.33, 13.31,
+                4295400
+            ),
+            orientation: {
+                heading: Cesium.Math.toRadians(33.74),
+                pitch: Cesium.Math.toRadians(-64.57),
+                roll: 0.0,
+            },
+        });
+    </script>
+    </div>
+</body>
+
+</html>

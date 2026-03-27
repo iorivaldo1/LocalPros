@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCalRiverPath.js"></script>
+    <link rel="stylesheet" href="/Public/css/1.css">
+    <script src="/Public/js/dom-to-image.min.js"></script>
+    <script src="/Public/js/FileSaver.min.js"></script>
+    <style>
+        #mapDiv {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+            /* min-height: calc(100vh - 50px); */
+        }
+
+        .test1 {
+            position: absolute;
+            bottom: 100px;
+            z-index: 450;
+        }
+
+        #addPoint {
+            left: 50px;
+        }
+
+        #close {
+            left: 120px;
+        }
+
+        #export {
+            left: 162px;
+        }
+
+        .test2 {
+            position: absolute;
+            bottom: 70px;
+            z-index: 450;
+        }
+
+        #coordOn {
+            left: 50px;
+        }
+
+        #coordOff {
+            left: 150px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapDiv">
+        <div id="showCoordSwitch">
+            <span>查询坐标</span>
+            <button class="switch">
+                <span class="switch_circle circle_left"></span>
+            </button>
+        </div>
+        <button class="test1" id="addPoint">添加点位</button>
+        <button class="test1" id="close">关闭</button>
+        <button class="test1" id="export">导出</button>
+        <button class="test2" id="coordOn">开启坐标显示</button>
+        <button class="test2" id="coordOff">关闭坐标显示</button>
+
+        <div class="infoBox" id="infoBox">
+            <div id="compassContainer"></div>
+            <div class="confluencePointInfos" id="confluencePointInfos"></div>
+            <div class="slicedRiverInfos" id="slicedRiverInfos"></div>
+        </div>
+        <div id="coordInfoContainer">
+            <span id="coord"></span>
+        </div>
+    </div>
+    <script>
+        var map = new T.Map("mapDiv")
+        var zoom = 9;
+        map.centerAndZoom(new T.LngLat(103.0253, 29.9967), zoom);
+        map.disableDoubleClickZoom(); //禁用双击地图放大
+        var overLayList = []  //marker和slicedRiver列表
+        var allRiver = []  //所有河流data列表
+        var infoList = [] //计算出的信息列表
+        var countyPolygon = []
+        //添加比例尺控件
+        var scale = new T.Control.Scale();
+        map.addControl(scale);
+        initRiverPolyline() //初始化底层河流线
+        initCountyPolyline() //初始化底层县界
+        getRiverData(allRiver) //初始时读取河流数据
+        getCountyData(countyPolygon) //初始时读取县面数据
+        regSwitchButton();//注册switch开关功能
+        $("#addPoint").click(function (e) {
+            e.stopPropagation(); //e不冒泡
+            map.removeEventListener("click");
+            map.addEventListener("click", MapClick());
+        })
+
+        $("#close").click(function () {
+            map.removeEventListener("click");
+            overLayList.forEach(overLay => {
+                map.removeOverLay(overLay)
+            })
+            overLayList = []
+            $("#infoBox").hide();
+            map.centerAndZoom(new T.LngLat(103.0253, 29.9967), zoom);
+        })
+
+        function MapClick(riverPolylineList) {
+            return function (e) {
+                $("#infoBox").show();
+                infoList = []
+                var flag = 1; //不考虑点击点离河流距离标志
+                overLayList.forEach(overLay => {
+                    map.removeOverLay(overLay)
+                })
+                overLayList = []
+                var point = [e.lnglat.lng, e.lnglat.lat]
+                getAllRivCrossPoints(point, allRiver, flag) //计算
+                setOverLays(infoList)   //设置overLay
+                // setViewPort(infoList)  //设置对象居中
+                setInfoPanel(infoList, countyPolygon)
+            }
+        }
+
+        const captureScreenshot = () => {
+            domtoimage.toBlob(document.querySelector("#mapDiv"), { filter: filter })
+                .then(blob => {
+                    saveAs(blob, 't.png')
+
+                })
+                .catch(function (error) {
+                    console.error("失败:", error);
+                });
+        };
+
+        function filter(node) {
+            return (node.className !== 'test');
+        }
+
+        $("#export").click(function (e) {
+            e.stopPropagation(); //e不冒泡
+            captureScreenshot()
+        })
+
+        $("#coordOn").click(function () {
+            removeMapMousemove();
+            $("#coordInfoContainer").show()
+            map.addEventListener("mousemove", MapMousemove);
+        })
+
+        $("#coordOff").click(function () {
+            map.removeEventListener("mousemove", MapMousemove);
+            $("#coordInfoContainer").hide()
+        })
+
+        function removeMapMousemove() {
+            map.removeEventListener("mousemove", MapMousemove);
+        }
+
+        function MapMousemove(e) {
+            var jd = e.lnglat.getLng().toFixed(5)
+            var wd = e.lnglat.getLat().toFixed(5)
+            var info = `经度:${jd}:纬度${wd}` 
+            $('#coord').text(info)
+        }
+
+        //设置switch开关监听--查询坐标开关
+        function regSwitchButton() {
+            var flag = 0;
+            let bt = $(".switch")[0];
+            let circl = $(".switch_circle")[0];
+            bt.addEventListener("click", () => {
+                bt.classList.toggle("switch_active");
+                circl.classList.toggle("circle_right");
+                circl.classList.toggle("circle_left");
+                if(flag == 0){
+                    removeMapMousemove();
+                    $("#coordInfoContainer").show()
+                    map.addEventListener("mousemove", MapMousemove);
+                    flag = 1
+                }else{
+                    map.removeEventListener("mousemove", MapMousemove);
+                    $("#coordInfoContainer").hide()
+                    flag = 0
+                }
+
+            });
+        }
+
+    </script>
+</body>
+
+</html>

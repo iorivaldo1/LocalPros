@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForTianditu.js"></script>
+    <style>
+        #mapDiv {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+            /* min-height: calc(100vh - 50px); */
+        }
+
+        .test {
+            position: absolute;
+            bottom: 100px;
+            z-index: 450;
+        }
+
+        #addPoint {
+            left: 50px;
+        }
+
+        #cal {
+            left: 120px;
+        }
+
+        #close {
+            left: 162px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapDiv">
+        <button class="test" id="addPoint">添加点位</button>
+        <button class="test" id="cal">计算</button>
+        <button class="test" id="close">关闭</button>
+    </div>
+    <script>
+        var markerIndex = 1;
+        var icon = new T.Icon({
+            iconUrl: "/Public/imgs/marker-icon.png",
+            iconSize: new T.Point(19, 27),
+            iconAnchor: new T.Point(10, 25)
+        });
+        var icon_proj = new T.Icon({
+            iconUrl: "/Public/imgs/marker-icon2.png",
+            iconSize: new T.Point(25, 25),
+            iconAnchor: new T.Point(10, 25)
+        });
+        var map = new T.Map("mapDiv")
+        var zoom = 17;
+        map.centerAndZoom(new T.LngLat(103.0253, 29.9967), zoom);
+        map.disableDoubleClickZoom(); //禁用双击地图放大
+
+        var markerList = []
+        var riverPolylineAndNameList = []
+        var lineProList = []
+        var markerProList = []
+        //加载河流矢量
+        initRiverPolyLine()
+        //初始时读取河流数据
+        getRiverData(riverPolylineAndNameList)
+        $("#addPoint").click(function () {
+            setTimeout(function () {
+                map.removeEventListener("click");
+                map.addEventListener("click", MapClick(riverPolylineAndNameList));
+            }, 50);
+        })
+
+        $("#cal").click(function () {
+            map.removeEventListener("click");
+            //重置marker编号
+            markerIndex = 1;
+            //maker先按河流等级排序(支流流向干流)
+            const maerkerList_sort = markerList.sort((a, b) => b[3] - a[3])
+            //获取排序后的河流名称(6级支流->5级支流->...->干流)
+            const rivNames = [...new Set(markerList.map(item => item[1]))];
+            if (rivNames.length == 1) {
+                const marker_riv = markerList.filter(item => item[1] == rivNames[0])
+                const marker_riv_sort = marker_riv.sort((a, b) => a[2] - b[2])
+                const rivPolylineAndName = riverPolylineAndNameList.filter(item => item[1] == rivNames[0]);
+                calRivPolyLineWithRiverName(marker_riv_sort, rivPolylineAndName[0])
+            } else if (rivNames.length == 2) {
+                var r1 = riverPolylineAndNameList.filter(item => item[1] == rivNames[0]);
+                var r2 = riverPolylineAndNameList.filter(item => item[1] == rivNames[1]);
+                createRivCrossMarker(r1,r2)
+                
+                var temp = 0;
+                for(let i=0;i<rivNames.length;i++){
+                    const marker_riv = markerList.filter(item => item[1] == rivNames[i])
+                    const marker_riv_sort = marker_riv.sort((a, b) => a[2] - b[2])
+                    const rivPolylineAndName = riverPolylineAndNameList.filter(item => item[1] == rivNames[i]);
+                    calRivPolyLineWithRiverName(marker_riv_sort, rivPolylineAndName[0])
+                    if(temp == 0){  
+                        const maker_riv_sort_filter = marker_riv_sort.filter(item => item[4] !== "rcp")
+                        createMarkerPro(maker_riv_sort_filter, rivPolylineAndName[0], temp)
+                    }else{
+                        console.log(marker_riv_sort)
+                        createMarkerPro(marker_riv_sort, rivPolylineAndName[0],0)
+                    }   
+                    temp +=1
+                }
+                // console.log(getMarkerIndexOfRiversCross(markerList))
+            }
+        })
+
+        $("#close").click(function () {
+            map.removeEventListener("click");
+            markerList.forEach(marker => {
+                map.removeOverLay(marker[0])
+            })
+            lineProList.forEach(proLine => {
+                map.removeOverLay(proLine)
+            })
+            markerProList.forEach(markerPro => {
+                map.removeOverLay(markerPro)
+            })
+            markerList = []
+        })
+
+        function MapClick(riverPolylineList) {
+            return function (e) {
+                var marker = new T.Marker(new T.LngLat(e.lnglat.lng, e.lnglat.lat), { icon: icon });
+                var marker_riv_name = getMarkerPro(marker, riverPolylineList)[0]
+                var marker_index = getMarkerPro(marker, riverPolylineList)[1]
+                var maker_riv_level = getMarkerPro(marker, riverPolylineList)[2]
+                map.addOverLay(marker);
+                markerList.push([marker, marker_riv_name, marker_index, maker_riv_level])
+            }
+        }
+    </script>
+</body>
+
+</html>

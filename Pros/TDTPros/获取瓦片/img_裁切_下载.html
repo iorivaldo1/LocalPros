@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Test</title>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 下拉框选取按钮样式 */
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+        }
+
+        #getDem:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        #getDem:active {
+            transform: translateY(0);
+        }
+
+        /* Canvas容器样式 */
+        .canvas-container {
+            position: absolute;
+            z-index: 450;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            padding: 15px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            top: 50px;
+            right: 50px;
+        }
+
+        .canvas-container.show {
+            display: flex;
+        }
+
+        canvas {
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            background: #f8f9fa;
+        }
+
+        /* 下载按钮样式 */
+        .download-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .download-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }
+
+        .download-btn:active {
+            transform: translateY(0);
+        }
+
+        .canvas-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+            margin-bottom: -5px;
+        }
+
+        /* 按钮说明文字样式 */
+        .button-description {
+            position: absolute;
+            bottom: 100px;
+            left: 80px;
+            z-index: 449;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            font-size: 14px;
+            color: #333;
+            pointer-events: none;
+            max-width: 200px;
+            line-height: 1.5;
+        }
+
+        .button-description strong {
+            color: #667eea;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* 关闭按钮样式 */
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 28px;
+            height: 28px;
+            background: #ff4757;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            color: white;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 6px rgba(255, 71, 87, 0.3);
+        }
+
+        .close-btn:hover {
+            background: #ee5a6f;
+            transform: scale(1.1);
+            box-shadow: 0 3px 10px rgba(255, 71, 87, 0.5);
+        }
+
+        /* 设置按钮样式 */
+        #settingsBtn {
+            position: absolute;
+            bottom: 30px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #265498 0%, #073264 100%);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+        }
+
+        #settingsBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+
+        #settingsBtn:active {
+            transform: translateY(0);
+        }
+
+        /* 设置面板样式 */
+        .settings-panel {
+            position: absolute;
+            bottom: 230px;
+            left: 20px;
+            z-index: 449;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            padding: 15px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 200px;
+        }
+
+        .settings-panel.show {
+            display: flex;
+        }
+
+        .settings-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .settings-item label {
+            font-size: 14px;
+            color: #333;
+            flex: 1;
+        }
+
+        .settings-item select {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .settings-item input[type="text"] {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 12px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .settings-item input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* 设置面板按钮组 */
+        .settings-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+
+        .settings-buttons button {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-confirm:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-cancel {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .btn-cancel:hover {
+            background: #d0d0d0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    
+    <!-- Canvas 2 容器 (仅保留裁切后的) -->
+    <div id="container2" class="canvas-container">
+        <button class="close-btn" onclick="closeCanvas()">✕</button>
+        <div class="canvas-label">裁切结果</div>
+        <canvas id="canvas2"></canvas>
+        <button class="download-btn" onclick="downloadCanvas()">📥 保存</button>
+    </div>
+    
+    <!-- 设置按钮 -->
+    <button id="settingsBtn" title="设置">⚙️</button>
+    
+    <!-- 设置面板 -->
+    <div id="settingsPanel" class="settings-panel">
+        <div class="settings-item">
+            <label>保存格式:</label>
+            <select id="formatSelect">
+                <option value="geotiff">GeoTIFF</option>
+                <option value="png">PNG</option>
+                <option value="jpg">JPG</option>
+            </select>
+        </div>
+        <div class="settings-item">
+            <label>天地图Token:</label>
+            <input type="text" id="tokenInput" placeholder="留空使用默认token">
+        </div>
+        <div class="settings-buttons">
+            <button class="btn-confirm" onclick="confirmSettings()">✓ 确定</button>
+            <button class="btn-cancel" onclick="cancelSettings()">✕ 取消</button>
+        </div>
+    </div>
+    
+    <!-- 选取范围按钮 -->
+    <button id="getDem" title="框选下载范围">🔽</button>
+    
+    <!-- 按钮说明 -->
+    <div class="button-description">
+        <strong>使用说明：</strong>
+        点击按钮后，在地图上拖拽框选需要下载的区域，裁切结果会自动显示在右侧
+    </div>
+
+    <script>
+        // ========== 工具函数 ==========
+        
+        // 经纬度转瓦片行列号
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360;
+            const y = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
+                1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2;
+            const tileCount = Math.pow(2, zoom);
+            const tileCol = Math.floor(x * tileCount);
+            const tileRow = Math.floor(y * tileCount);
+            
+            return [tileCol, tileRow];
+        }
+        
+        // 瓦片行列号转经纬度
+        function tileToLngLat(tileCol, tileRow, zoom) {
+            const n = Math.pow(2, zoom);
+            const lng = tileCol / n * 360 - 180;
+            const latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * tileRow / n)));
+            const lat = latRad * 180 / Math.PI;
+            
+            return [lng, lat];
+        }
+        
+        // 计算瓦片边界
+        function calculateBounds(tiles) {
+            const cols = tiles.map(t => t.col);
+            const rows = tiles.map(t => t.row);
+            
+            return {
+                minCol: Math.min(...cols),
+                maxCol: Math.max(...cols),
+                minRow: Math.min(...rows),
+                maxRow: Math.max(...rows)
+            };
+        }
+        
+        // 获取框选范围
+        function getBbox() {
+            return new Promise((resolve, reject) => {
+                const handler = (e) => {
+                    const bbox = e.currentBounds;
+                    recTool.removeEventListener('draw', handler);
+                    resolve(bbox);
+                };
+                recTool.addEventListener('draw', handler);
+            });
+        }
+        
+        // 加载所有图片
+        async function getAllImages(tiles) {
+            const loadPromises = tiles.map(tile =>
+                loadImage(tile.url).catch(error => {
+                    console.error(`加载瓦片失败: ${tile.url}`, error);
+                    return null;
+                })
+            );
+            const images = await Promise.all(loadPromises);
+            return images;
+        }
+        
+        // 加载单个图片
+        function loadImage(url, timeout = 50000) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                const timer = setTimeout(() => {
+                    reject(new Error(`图片加载超时: ${url}`));
+                }, timeout);
+                
+                img.onload = () => {
+                    clearTimeout(timer);
+                    resolve(img);
+                };
+                
+                img.onerror = () => {
+                    clearTimeout(timer);
+                    reject(new Error(`图片加载失败: ${url}`));
+                };
+                
+                img.src = url;
+            });
+        }
+        
+        // ========== 主程序 ==========
+        
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 18);
+        // map.disableScrollWheelZoom();
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        // 全局变量保存地理信息
+        let currentGeoInfo = null;
+        
+        // 默认token（从three_utills.js中获取）
+        const DEFAULT_TOKEN = 'be50c7492442ecf4e61ca7bd578d6b8b';
+        
+        // 保存设置的临时变量
+        let savedSettings = {
+            format: 'geotiff',
+            token: ''
+        };
+
+        $('#getDem').on('click', HD1);
+        
+        // 初始化设置
+        $(document).ready(function() {
+            $('#formatSelect').val(savedSettings.format);
+            $('#tokenInput').val(savedSettings.token);
+        });
+        
+        // 设置按钮点击事件
+        $('#settingsBtn').on('click', function() {
+            // 打开设置面板时，显示当前保存的设置
+            $('#formatSelect').val(savedSettings.format);
+            $('#tokenInput').val(savedSettings.token);
+            $('#settingsPanel').toggleClass('show');
+        });
+        
+        // 获取当前使用的token
+        function getCurrentToken() {
+            return savedSettings.token || DEFAULT_TOKEN;
+        }
+        
+        // 确定设置
+        function confirmSettings() {
+            savedSettings.format = $('#formatSelect').val();
+            savedSettings.token = $('#tokenInput').val().trim();
+            $('#settingsPanel').removeClass('show');
+            console.log('设置已保存:', savedSettings);
+        }
+        
+        // 取消设置
+        function cancelSettings() {
+            // 恢复为保存的设置
+            $('#formatSelect').val(savedSettings.format);
+            $('#tokenInput').val(savedSettings.token);
+            $('#settingsPanel').removeClass('show');
+        }
+
+        async function HD1() {
+            // 清空并隐藏canvas
+            closeCanvas();
+            
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+
+            const bbox = await getBbox()
+
+            const zoom = 18;
+            const tileSize = 256;
+
+            var minX = bbox.getSouthWest().lng
+            var minY = bbox.getSouthWest().lat
+            var maxX = bbox.getNorthEast().lng
+            var maxY = bbox.getNorthEast().lat
+
+            const nw = lngLatToTile(minX, maxY, zoom);  // 西北角
+            const ne = lngLatToTile(maxX, maxY, zoom);  // 东北角
+            const sw = lngLatToTile(minX, minY, zoom);  // 西南角
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);  // 注意：行号从上到下增加
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({
+                        url: getTileWMTSUrlIMG(col, row, zoom, getCurrentToken()),
+                        col: col,
+                        row: row,
+                    });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            //ca1 - 使用临时canvas
+            const canvas1 = document.createElement('canvas');
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            //ca2
+            const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom);
+            //计算最后一个瓦片右下角坐标,+1保证为右下角(否则为最后一个瓦片的左上角坐标)
+            const [lastTile_se_x, lastTile_se_y] = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+            //计算范围宽高
+            const geoWidth = lastTile_se_x - firstTile_nw_x;
+            const geoHeight = lastTile_se_y - firstTile_nw_y;
+            //计算像素比例
+            const pixelsPerDegreeX = canvasWidth / geoWidth;
+            const pixelsPerDegreeY = canvasHeight / geoHeight;
+            //计算选择框像素尺寸
+            const selectionPixelWidth = (maxX - minX) * pixelsPerDegreeX;
+            const selectionPixelHeight = (minY - maxY) * pixelsPerDegreeY;
+
+            //渲染并显示canvas
+            const canvas2 = $('#canvas2')[0];
+            canvas2.width = Math.ceil(selectionPixelWidth);
+            canvas2.height = Math.ceil(selectionPixelHeight);
+            const ctx2 = canvas2.getContext('2d');
+
+            
+            const images = await getAllImages(tiles)
+            images.forEach((img, index) => {
+                const tile = tiles[index];
+                const x = (tile.col - bounds.minCol) * tileSize;
+                const y = (tile.row - bounds.minRow) * tileSize;
+                ctx1.drawImage(img, x, y, tileSize, tileSize);
+            });
+
+            // 计算偏移量
+            const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX;
+            const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY;
+
+            const imageData = ctx1.getImageData(
+                Math.floor(offset_x),
+                Math.floor(offset_y),
+                canvas2.width,
+                canvas2.height
+            );
+            ctx2.putImageData(imageData, 0, 0);
+            
+            // 保存地理信息
+            currentGeoInfo = {
+                minX: minX,
+                maxX: maxX,
+                minY: minY,
+                maxY: maxY,
+                width: canvas2.width,
+                height: canvas2.height
+            };
+            
+            // 显示canvas容器
+            $('#container2').addClass('show');
+        }
+
+        // 关闭canvas
+        function closeCanvas() {
+            $('#container2').removeClass('show');
+            const canvas2 = $('#canvas2')[0];
+            if (canvas2) {
+                const ctx = canvas2.getContext('2d');
+                ctx.clearRect(0, 0, canvas2.width, canvas2.height);
+                canvas2.width = 0;
+                canvas2.height = 0;
+            }
+            currentGeoInfo = null;
+        }
+
+        // 下载canvas图片的函数
+        async function downloadCanvas() {
+            const canvas = document.getElementById('canvas2');
+            if (!canvas) {
+                alert('Canvas未找到');
+                return;
+            }
+            
+            // 检查canvas是否有内容
+            if (canvas.width === 0 || canvas.height === 0) {
+                alert('请先框选区域生成图片');
+                return;
+            }
+            
+            const format = savedSettings.format;
+            const timestamp = new Date().getTime();
+            
+            if (format === 'geotiff') {
+                // 保存为GeoTIFF格式
+                if (!currentGeoInfo) {
+                    alert('地理信息缺失');
+                    return;
+                }
+                await saveAsGeoTIFF(canvas, currentGeoInfo, `裁切结果_${timestamp}.tif`);
+            } else {
+                // 保存为PNG或JPG格式
+                const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+                const extension = format === 'png' ? '.png' : '.jpg';
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = `裁切结果_${timestamp}${extension}`;
+                    link.href = url;
+                        link.style.display = 'none';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }, mimeType);
+            }
+        }
+
+        // 保存为GeoTIFF格式
+        async function saveAsGeoTIFF(canvas, geoInfo, filename) {
+            try {
+                if (!window.GeoTIFF || typeof GeoTIFF.writeArrayBuffer !== 'function') {
+                    throw new Error('当前引入的 geotiff.js 不支持写入（缺少 GeoTIFF.writeArrayBuffer）。请确认引用的是 geotiff@2.x 的 browser 版本，或使用示例文件中的 geotiff.js。');
+                }
+
+                // 获取canvas图像数据（Canvas 是 RGBA，这里转成 RGB 交错三通道）
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const { data, width, height } = imageData;
+
+                const raster = new Uint8Array(width * height * 3);
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const srcIndex = (y * width + x) * 4; // RGBA
+                        const dstIndex = (y * width + x) * 3; // RGB
+                        raster[dstIndex] = data[srcIndex];
+                        raster[dstIndex + 1] = data[srcIndex + 1];
+                        raster[dstIndex + 2] = data[srcIndex + 2];
+                    }
+                }
+
+                // 像元大小（注意这里假设经纬度线性变化；如果范围很大，WebMercator 会有形变）
+                const pixelSizeX = (geoInfo.maxX - geoInfo.minX) / width;
+                const pixelSizeY = (geoInfo.maxY - geoInfo.minY) / height;
+
+                // 写 GeoTIFF（接口按仓库里已验证的用法：raster + options）
+                const arrayBuffer = await GeoTIFF.writeArrayBuffer(raster, {
+                    width,
+                    height,
+
+                    // 地理参考：左上角 tiepoint + 像元尺寸
+                    ModelPixelScale: [pixelSizeX, pixelSizeY, 0],
+                    ModelTiepoint: [0, 0, 0, geoInfo.minX, geoInfo.maxY, 0],
+
+                    // GeoKeys（按 WGS84 经纬度写入；若你需要 WebMercator，请再改成 3857 并做坐标转换）
+                    GTModelTypeGeoKey: 2,
+                    GeographicTypeGeoKey: 4326,
+                });
+
+                // 优先用 File System Access API 保存（更可靠），否则用 a 标签下载
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                        types: [{
+                            description: 'GeoTIFF',
+                            accept: { 'image/tiff': ['.tif', '.tiff'] }
+                        }]
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(new Blob([arrayBuffer], { type: 'image/tiff' }));
+                    await writable.close();
+                } else {
+                    const blob = new Blob([arrayBuffer], { type: 'image/tiff' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = filename;
+                    link.href = url;
+                        link.style.display = 'none';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }
+
+                console.log('GeoTIFF保存成功');
+                console.log('地理范围信息:');
+                console.log(`  左上角坐标: (${geoInfo.minX}, ${geoInfo.maxY})`);
+                console.log(`  右下角坐标: (${geoInfo.maxX}, ${geoInfo.minY})`);
+                console.log(`  像素分辨率: X=${pixelSizeX}, Y=${pixelSizeY}`);
+                
+            } catch (error) {
+                console.error('保存GeoTIFF失败:', error);
+                alert('GeoTIFF保存失败：' + (error && error.message ? error.message : error) + '\n\n可临时改用 PNG/JPG 验证流程是否正常。');
+            }
+        }
+        
+        // 生成瓦片URL的函数（支持自定义token）
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom, token) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`;
+            const wmtsUrl =
+                baseUrl +
+                'REQUEST=GetTile' +
+                '&SERVICE=WMTS' +
+                '&VERSION=1.0.0' +
+                '&LAYER=img' +
+                '&STYLE=default' +
+                '&TILEMATRIXSET=w' +
+                '&FORMAT=image%2Fpng' +
+                '&tk=' + token +
+                '&TILECOL=' + tileCol +
+                '&TILEROW=' + tileRow +
+                '&TILEMATRIX=' + zoom;
+            return wmtsUrl;
+        }
+    </script>
+</body>
+
+</html>

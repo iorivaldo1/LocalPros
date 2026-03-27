@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>框选获取瓦片</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+
+    <script>
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360;
+            const y = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
+                1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2;
+            const tileCount = Math.pow(2, zoom);
+            const tileCol = Math.floor(x * tileCount);
+            const tileRow = Math.floor(y * tileCount);
+
+            return [tileCol, tileRow];
+        }
+
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8)
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`
+            const wmtsUrl =
+                baseUrl +
+                'REQUEST=GetTile' +
+                '&SERVICE=WMTS' +
+                '&VERSION=1.0.0' +
+                '&LAYER=img' +
+                '&STYLE=default' +
+                '&TILEMATRIXSET=w' +
+                '&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+                '&TILECOL=' + tileCol +
+                '&TILEROW=' + tileRow +
+                '&TILEMATRIX=' + zoom
+
+            fetch(wmtsUrl).then(res => {
+
+            })
+        }
+
+
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+
+        function HD1() {
+
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                const zoom = e.target.jE.fW
+                var west = e.currentBounds.getSouthWest().lng
+                var south = e.currentBounds.getSouthWest().lat
+                var east = e.currentBounds.getNorthEast().lng
+                var north = e.currentBounds.getNorthEast().lat
+
+                const nw = lngLatToTile(west, north, zoom);  // 西北角
+                const ne = lngLatToTile(east, north, zoom);  // 东北角
+                const sw = lngLatToTile(west, south, zoom);  // 西南角
+                const se = lngLatToTile(east, south, zoom);
+                const minCol = Math.min(nw[0], sw[0]);
+                const maxCol = Math.max(ne[0], se[0]);
+                const minRow = Math.min(ne[1], se[1]);  // 注意：行号从上到下增加
+                const maxRow = Math.max(nw[1], sw[1]);
+
+                const colCount = maxCol - minCol + 1;
+                const rowCount = maxRow - minRow + 1;
+                const totalTiles = colCount * rowCount;
+
+                const tiles = [];
+                for (let col = minCol; col <= maxCol; col++) {
+                    for (let row = minRow; row <= maxRow; row++) {
+                        tiles.push({
+                            col: col,
+                            row: row,
+                            zoom: zoom
+                        });
+                    }
+                }
+                console.log(tiles)
+            })
+        }
+    </script>
+</body>
+
+</html>

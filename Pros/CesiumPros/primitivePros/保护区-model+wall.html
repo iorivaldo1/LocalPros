@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+    <style>
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            infoBox: false, //不设置会在浏览器F12报错
+            animation: false,
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+            geocoder: false, //控制右上角第一个位置的查找工具
+            homeButton: true, //控制右上角第二个位置的home图标
+            sceneModePicker: false, //控制右上角第三个位置的选择视角模式，2d，3d
+            baseLayerPicker: true, //控制右上角第四个位置的图层选择器
+            navigationHelpButton: false, //控制右上角第五个位置的导航帮助按钮
+            animation: false, //控制左下角的动画器件
+            timeline: false, //控制下方时间线
+            fullscreenButton: false, //右下角全屏按钮
+        });
+        viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        regClickPrimitive(viewer);
+
+        viewer.camera.changed.addEventListener(() => {
+            let heading = Cesium.Math.toDegrees(viewer.camera.heading).toFixed(2)
+            let pitch = Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(2)
+            let viewHeight = viewer.camera.positionCartographic.height.toFixed(2)
+            var positionCartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+            var longitude = Cesium.Math.toDegrees(positionCartographic.longitude).toFixed(2);
+            var latitude = Cesium.Math.toDegrees(positionCartographic.latitude).toFixed(2);
+            var height = positionCartographic.height.toFixed(2);
+            $("#c-heading").text(`heading:${heading}`)
+            $("#c-pitch").text(`pitch:${pitch}`)
+            $("#c-jd").text(`视角经度:${longitude}`)
+            $("#c-wd").text(`视角纬度:${latitude}`)
+            $("#c-height").text(`视角高度:${height}`)
+
+        })
+        // viewer.scene.globe.show = false;
+        $.get("/Public/data/nature_reserve.json", {}, function (data) {
+            data.features.forEach(feature => {
+                const pls = feature.geometry.rings[0]
+                var pts = []
+                pls.forEach(pl => {
+                    pts.push(pl[0])
+                    pts.push(pl[1])
+                })
+                const polygon = new Cesium.PolygonGeometry({
+                    polygonHierarchy: new Cesium.PolygonHierarchy(
+                        Cesium.Cartesian3.fromDegreesArray(pts)
+                    ),
+                });
+
+                let hpr = new Cesium.HeadingPitchRoll(
+                    Cesium.Math.toRadians(0),
+                    Cesium.Math.toRadians(0),//0朝下 180朝上
+                    Cesium.Math.toRadians(0)
+                )
+
+
+
+                var myModel = viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(getCentroid(pls)[0], getCentroid(pls)[1]),
+                    orientation: new Cesium.CallbackProperty(e => {
+                        hpr.heading += Cesium.Math.toRadians(0.5);;
+                        let position = Cesium.Cartesian3.fromDegrees(getCentroid(pls)[0], getCentroid(pls)[1]);
+                        return Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
+                    }, false),
+                    // label: {
+                    //     text: feature.attributes.name,
+                    //     font: "16px sans-serif",
+                    //     showBackground: true,
+                    //     backgroundColor: new Cesium.Color.fromBytes(0, 70, 24),
+                    //     heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                    //     eyeOffset: new Cesium.Cartesian3(0, 0, -2000),
+                    //     pixelOffset: new Cesium.Cartesian2(100, -40),
+                    // },
+                    model: {
+                        uri: "/Public/models/map_pointer_3d_icon2.glb",
+                        // scale:200,
+                        minimumPixelSize: 50,
+                        maximumScale: 400,
+                        eyeOffset: new Cesium.Cartesian3(0, 0, -2000),
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                    },
+                });
+
+                var myProperties = new Cesium.PropertyBag();
+                myProperties.addProperty("TTT", "AAAAA");
+                myModel.properties = myProperties;
+
+                const wall = new Cesium.WallGeometry({
+                    positions: Cesium.Cartesian3.fromDegreesArray(pts),
+                    maximumHeights: new Array(pts.length).fill(5000),
+                    minimunHeights: new Array(pts.length).fill(0),
+                })
+
+                const geometry = Cesium.WallGeometry.createGeometry(wall);
+
+                const instance = new Cesium.GeometryInstance({
+                    geometry: geometry,
+
+                })
+
+                const materialAppearance = new Cesium.MaterialAppearance({
+                    material: new Cesium.Material({
+                        fabric: {
+                            type: '',
+                            uniforms: {
+                                color: Cesium.Color.fromAlpha(Cesium.Color.MEDIUMTURQUOISE,0.2),
+                                color2: Cesium.Color.fromAlpha(Cesium.Color.LIGHTSTEELBLUE,0.2),
+                                color3: Cesium.Color.fromAlpha(Cesium.Color.LIGHTSKYBLUE,0.2),
+                                color4: Cesium.Color.fromAlpha(Cesium.Color.PALETURQUOISE,0.2)
+                            },
+                            source: shaderDynamicsMultiRings3
+                        }
+                    }),
+
+                    // material: new Cesium.Material({
+                    //     fabric: {
+                    //         type: '',
+                    //         uniforms: {
+                    //             color: Cesium.Color.fromAlpha(Cesium.Color.MEDIUMTURQUOISE, 0.2)
+                    //         },
+                    //         source: shaderSourceUTB
+                    //     }
+                    // }),
+
+                    // material: Cesium.Material.fromType('Color', {
+                    //     // color: new Cesium.Color(0.0, 1.0, 0.0, 1.0)
+                    //     color: Cesium.Color.fromAlpha(Cesium.Color.MEDIUMTURQUOISE, 0.2)
+                    // }),
+                    faceForward: true,
+                    // closed: true
+                    // translucent:false,
+                });
+
+                viewer.scene.groundPrimitives.add(new Cesium.Primitive({
+                    geometryInstances: instance,
+                    appearance: materialAppearance,
+                    allowPicking: false
+
+                }));
+
+
+
+                viewer.camera.setView({
+                    destination: Cesium.Cartesian3.fromDegrees(
+                        102.68, 29.73,
+                        39929.52
+                    ),
+                    orientation: {
+                        heading: Cesium.Math.toRadians(347.29),
+                        pitch: Cesium.Math.toRadians(-39.84),
+                        roll: 0.0,
+                    },
+                });
+
+            })
+        })
+    </script>
+    </div>
+</body>
+
+</html>

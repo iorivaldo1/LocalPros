@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/f3d_ali.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .v_header {
+            user-select: none;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #test {
+            position: absolute;
+            bottom: 100px;
+            left: 70px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        #sh_riv_polyline {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #sh_mesh_grid {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        #three_click {
+            position: absolute;
+            top: 50px;
+            right: 20px;
+            z-index: 450;
+            width: 100px;
+        }
+
+        .viewer_ctrl_btns {
+            position: absolute;
+            margin-top: 1.5px;
+            width: 25px;
+            height: 25px;
+        }
+
+        #clo_con1 {
+            right: 10px;
+        }
+
+        #reloadScene1 {
+            right: 40px;
+        }
+
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        .sh_ctr_group {
+            display: none;
+        }
+
+        /* 新增的表格样式 */
+        #clickDataTable {
+            position: absolute;
+            top: 55px;
+            left: 20px;
+            width: 800px;
+            height: 300px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 500;
+            display: none;
+        }
+
+        .table-header {
+            background: #1e9fff;
+            color: white;
+            padding: 10px;
+            border-radius: 5px 5px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-header h3 {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .table-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .table-content {
+            height: calc(100% - 40px);
+            overflow: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-select" id="map"></div>
+    <button class="no-select" id="getDem">T</button>
+    <!-- <button id="test">T2</button> -->
+    <div class="no-select" id="coordSwitchButton">
+        <span>显示坐标</span>
+        <button class="switch">
+            <span class="switch_circle circle_left"></span>
+        </button>
+    </div>
+
+    <div id="coordInfoContainer">
+        <span id="coord"></span>
+    </div>
+
+    <!-- 新增的点击数据表格 -->
+    <div class="no-select" id="clickDataTable">
+        <div class="table-header">
+            <h3>点击点数据</h3>
+            <button class="table-close" onclick="closeTable()">×</button>
+        </div>
+        <div class="table-content">
+            <table id="dataTable" lay-filter="dataTable"></table>
+        </div>
+    </div>
+
+    <div class="viewer_3d" id="Window_3D">
+        <div class="v_header">
+            <span>DEM来源:FABDEM DOM来源:天地图</span>
+            <button class="viewer_ctrl_btns" id="reloadScene1">R</button>
+            <button class="viewer_ctrl_btns" id="clo_con1">X</button>
+        </div>
+        <div class="three_container" id="threeCon1"></div>
+        <div class="sh_ctr_group">
+            <div class="sw_container no-select" id="sh_riv_polyline">
+                <span>河流线</span>
+                <button class="switch switch_active">
+                    <span class="switch_circle circle_right"></span>
+                </button>
+            </div>
+
+            <div class="sw_container no-select" id="sh_mesh_grid">
+                <span>网格线</span>
+                <button class="switch switch_active">
+                    <span class="switch_circle circle_right"></span>
+                </button>
+            </div>
+
+            <div class="sw_container no-select" id="three_click">
+                <span>点击查询</span>
+                <button class="switch switch_active">
+                    <span class="switch_circle circle_right"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        //使用layui的loading和table功能
+        layui.use(['layer', 'table'], function () {
+            var layer = layui.layer;
+            var table = layui.table;
+
+            // 初始化表格
+            window.dataTable = table.render({
+                elem: '#dataTable',
+                cols: [[
+                    { field: 'index', title: '序号', width: 50, align: 'center' },
+                    { field: 'x', title: 'X坐标', width: 120, align: 'center' },
+                    { field: 'y', title: 'Y坐标', width: 120, align: 'center' },
+                    { field: 'lng', title: '经度', width: 120, align: 'center' },
+                    { field: 'lat', title: '纬度', width: 120, align: 'center' },
+                    { field: 'dis', title: '距离', width: 120, align: 'center' },
+                    { field: 'ele', title: '高程', width: 100, align: 'center' },
+                ]],
+                data: [],
+                text: {
+                    none: '暂无点击数据'
+                },
+                toolbar: true, // 开启工具栏
+                defaultToolbar: ['filter', 'exports'] // 默认工具栏包含导出
+            });
+        });
+
+        // 全局变量存储点击数据
+        window.clickDataList = [];
+
+        // 添加点击数据到表格
+        function addClickData(clickData) {
+            // 添加序号和时间戳
+            var newData = {
+                index: window.clickDataList.length + 1,
+                x: clickData.x ? clickData.x.toFixed(3) : '',
+                y: clickData.y ? clickData.y.toFixed(3) : '',
+                lng: clickData.lng ? clickData.lng.toFixed(6) : '',
+                lat: clickData.lat ? clickData.lat.toFixed(6) : '',
+                dis: clickData.dis,
+                ele: clickData.ele
+            };
+
+            window.clickDataList.push(newData); // 新数据添加到开头
+
+            // 更新表格
+            layui.table.reload('dataTable', {
+                data: window.clickDataList
+            });
+
+            // 显示表格（如果之前隐藏）
+            $('#clickDataTable').show();
+        }
+
+        // 清空表格数据
+        function clearTableData() {
+            window.clickDataList = [];
+            layui.table.reload('dataTable', {
+                data: []
+            });
+        }
+
+        // 关闭表格
+        function closeTable() {
+            $('#clickDataTable').hide();
+        }
+
+        // 显示表格
+        function showTable() {
+            $('#clickDataTable').show();
+        }
+
+        var showFlag = new Object();
+        showFlag.sh_riv_polyline = true;
+        showFlag.sh_mesh_grid = true;
+        showFlag.three_click = false;
+
+        //地图上点击点的容器，不要放其它的
+        let geo_marker_list = []
+        //geo-dem网格ov列表
+        let demOverLayerList = []
+
+        //加载ya河流
+        let river_list = []
+        $.get('http://8.155.1.150:8080/getLocalGEO/getYARiver').then(res => {
+            res.forEach(riv => {
+                const coord_json = JSON.parse(riv.geometry).coordinates
+                const riv_name = riv.name
+                var points = []
+                coord_json.forEach(p => {
+                    points.push(new T.LngLat(p[0], p[1]))
+                })
+                var line = new T.Polyline(points, {
+                    color: 'red',
+                    weight: 0.8,
+                    opacity: 0.8,
+                    lineStyle: "dash",
+                });
+                map.addOverLay(line);
+                river_list.push([line, riv_name])
+            })
+        })
+
+        //设置dem范围
+        setSourceBounds('http://localhost:8080/geoserver/WCS_DEM/wms?REQUEST=GetCapabilities', 'DEM_SC_FABDEM')
+
+        var map = new T.Map('map', { tileSize: 512 });
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(102.75919, 30.41595), 18);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        //显示坐标功能
+        regShowCoord(map);
+        //显示河流
+        regSHThreeFeature(showFlag, 'sh_riv_polyline', 'river_group');
+        //显示网格线
+        regSHThreeFeature(showFlag, 'sh_mesh_grid', 'seg_group');
+        //显示three中点击处信息
+        regSHThreeFeature(showFlag, 'three_click', 'three_click_group')
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        $('#getDem').on('click', HD1)
+        async function HD1() {
+            // console.clear()
+            demOverLayerList.forEach(ov => {
+                map.removeOverLay(ov)
+            })
+            //interact组件设置窗口拉伸缩放
+            init3DViewDragResize('Window_3D')
+            //清除点击点(天地图中)
+            geo_marker_list.forEach(gm => {
+                map.removeOverLay(gm)
+            })
+            //避免出现白模，先将窗口隐藏
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+            //拉框工具
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            let bbox_geo = await getBbox()
+            //选择框过大时，退出
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            if (x_range >= 0.08 || y_range >= 0.08) {
+                layer.alert('框选范围过大！请重新选择范围');
+                recTool.clear();
+                return;
+            } else if (x_range <= 0.0003 || y_range <= 0.0003) {
+                layer.alert('框选范围过小！请重新选择范围');
+                recTool.clear();
+                return;
+            }
+            //数据加载进度框
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo)
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]),//左下
+                new T.LngLat(bounds[2], bounds[3]) //右上
+            )
+            //构造扩大范围矩形
+            const geo_rectangle = []
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng()
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat()
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng()
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat()
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy))
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny))
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            })
+            map.addOverLay(rect)
+            demOverLayerList.push(rect)
+            recTool.clear()
+            //dem数据
+            const demData = await fetch(DEMUrl)
+            const demDataClone = demData.clone()
+            //demData.clone()只能读取一次，使用demDataClone.arrayBuffer()可以多次读取
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+
+            //------------------------------------二维--------------------------------------
+            //1.生成geo_bbox内的河流点
+            const river_ins_list = await cal_riv_intersects(river_list, bbox_geo_expand)
+            //2.划dem的网格线--注记非常耗时
+            // await drawGridAndEleLabel(demDataArrayBuffer, bounds, demOverLayerList, 0)
+            //------------------------------------三维--------------------------------------
+            //清除scene中已有three对象
+            deleteMesh(scene1, 'mesh_compass')
+            deleteMesh(scene1, 'mesh_dem')
+            deleteGroup(scene1, 'seg_group')
+            //dem生成mesh
+            const [mesh_dem, minEle, maxEle, geometry] = await c_mesh_dem(demDataArrayBuffer, camera1, 'mesh_dem')
+            scene1.add(mesh_dem)
+            //生成mesh每一条边,并注记
+            const allSegments = await createLineSegmentsWithIndexLabels(mesh_dem);
+            allSegments.rotation.x = -Math.PI / 2;
+            scene1.add(allSegments)
+            //计算dem的bbox
+            const bbox_dem = new THREE.Box3().setFromObject(mesh_dem);
+            //计算riv与mesh各边的相交点，并在scene中绘制
+            const textureLoader = new THREE.TextureLoader();
+            const colorTexture = textureLoader.load('/Public/imgs/spriteLine2.png');
+            const river_line_material = new THREE.ShaderMaterial({
+                uniforms: {
+                    // 定义一个颜色uniform
+                    colorTexture: { value: colorTexture },
+                    time: { value: 0 }
+                },
+                vertexShader: testLineVS2,
+                fragmentShader: testLineFS2,
+            });
+            const riv_group = await c_polyline_riv_animate(scene1, mesh_dem, bbox_dem, river_ins_list, bbox_geo_expand, river_line_material)
+            //纹理,先获取dom(img影像和cia影像注记混合)
+            const domTile = await c_dom_img_cia_lv(bbox_geo_expand, 18)
+            loadTexture(mesh_dem, domTile)
+            //compass生成mesh
+            const mesh_compass = await c_mesh_compass(bbox_dem, 'mesh_compass')
+            // scene1.add(mesh_compass)
+            //避免出现白模，initThreeView异步最后让其显示
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex)
+                $('#' + 'Window_3D').css('visibility', 'visible')
+                $('.sh_ctr_group').show()
+                resolve();
+            })
+
+            const dash_line_flow_material = new THREE.ShaderMaterial({
+                vertexShader: dash_line_vs1,
+                fragmentShader: dash_line_fs1,
+                uniforms: {
+                    time: { value: 0.0 }
+                },
+            });
+
+            const ring_wave_material = new THREE.ShaderMaterial({
+                vertexShader: ring_wave_vs1,
+                fragmentShader: ring_wave_fs1,
+                uniforms: {
+                    time: { value: 0.0 }
+                },
+                transparent: true,
+                side: THREE.DoubleSide,
+            })
+
+            // 清空之前的点击数据
+            clearTableData();
+
+            initClick(map, scene1, renderer1, camera1, mesh_dem, bbox_geo_expand,
+                dash_line_flow_material, minEle, maxEle)
+            function animate() {
+                requestAnimationFrame(animate);
+
+                river_line_material.uniforms.time.value += 0.001;
+                dash_line_flow_material.uniforms.time.value += 0.001;
+                ring_wave_material.uniforms.time.value += 0.001;
+
+                updateRiverPointSphere(riv_group, camera1)
+
+                //指北针始终面向camera
+                mesh_compass.lookAt(camera1.position);
+
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+
+            //显示元素控制组件
+            $('.sw_container').css('visibility', 'visible');
+
+            //重新拉框后，每次强制显示状态为true
+            for (let i = 0; i < $('.sw_container').length; i++) {
+                if ($('.sw_container').find('button')[i].classList == 'switch') {
+                    $('.sw_container').find('button')[i].classList.toggle('switch_active')
+                    $('.sw_container').find('.switch_circle')[i].classList.toggle('circle_right')
+                }
+            }
+
+            //设置显示flag
+            for (let key in showFlag) {
+                if (showFlag.hasOwnProperty(key)) {
+                    if (showFlag[key] == false) {
+                        showFlag[key] = true
+                    }
+                }
+            }
+        }
+
+        $('#clo_con1').on('click', function () {
+            demOverLayerList.forEach(ov => {
+                map.removeOverLay(ov)
+            })
+            geo_marker_list.forEach(gm => {
+                map.removeOverLay(gm)
+            })
+
+            $('#Window_3D').css('visibility', 'hidden')
+            $('.sh_ctr_group').hide()
+            recTool.clear();
+        })
+
+        $('#reloadScene1').on('click', function () {
+            camera1.position.set(0, 5, 6.5);
+        })
+
+        function exportToExcel() {
+            if (window.clickDataList.length === 0) {
+                layui.layer.msg('没有数据可导出');
+                return;
+            }
+
+            // 使用layui的表格导出功能
+            layui.table.exportFile(window.dataTable.config.id, window.clickDataList, 'xls');
+        }
+
+        // 假设在initClick函数中，当有点击事件时，会调用这个函数
+        // 您需要在initClick函数中适当的位置添加对addClickData的调用
+        // 例如：当检测到点击并获取到坐标数据后，调用 addClickData(clickData)
+    </script>
+</body>
+
+</html>

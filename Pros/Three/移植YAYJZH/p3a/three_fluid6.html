@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>浅水方程流体模拟 - SWE Fluid Simulation</title>
+    <script src="/public/js/three.min.js"></script>
+    <script src="/public/js/OrbitControls.js"></script>
+    <script src="/public/js/geotiff.js"></script>
+    <script src="/public/js/fluidShader6.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #050a10;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+            font-family: 'Microsoft YaHei', sans-serif;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        #ui h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.5em;
+        }
+
+        #ui p {
+            margin: 5px 0;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        #stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px black;
+            text-align: right;
+        }
+
+        #water-debug {
+            position: absolute;
+            top: 50px;
+            right: 20px;
+            width: 200px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .debug-container {
+            width: 200px;
+            height: 200px;
+            border: 1px solid #555;
+            background: #000;
+            position: relative;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .debug-label {
+            position: absolute;
+            top: 2px;
+            left: 5px;
+            font-size: 10px;
+            color: #0f0;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 2px 4px;
+            z-index: 10;
+        }
+
+        #water-debug canvas {
+            image-rendering: pixelated;
+            width: 100%;
+            height: 100%;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        #controls label {
+            display: block;
+            margin: 5px 0;
+        }
+
+        #controls input[type="range"] {
+            width: 150px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="ui">
+        <h1>🌊 浅水方程流体模拟</h1>
+        <p>点击地形注入水源，观察水流动态</p>
+        <p>水体将沿地形梯度向低处流动并汇集</p>
+    </div>
+    <div id="stats">FPS: --</div>
+    <div id="water-debug">
+        <div class="debug-container">
+            <div class="debug-label">buffA (Water Depth)</div>
+            <canvas id="debugCanvas"></canvas>
+        </div>
+        <div class="debug-container" style="display: none;">
+            <div class="debug-label">buffB (Flux/Flow)</div>
+            <canvas id="fluxCanvas"></canvas>
+        </div>
+    </div>
+    <div id="controls">
+        <label>重力 (Gravity): <input type="range" id="gravity" min="0.0" max="50.0" step="0.5" value="15.0"> <span
+                id="gravityVal">15.0</span></label>
+        <label>管道面积 (PipeArea): <input type="range" id="pipeArea" min="0.01" max="1.0" step="0.01" value="0.35"> <span
+                id="pipeAreaVal">0.35</span></label>
+        <label>管道长度 (PipeLength): <input type="range" id="pipeLength" min="0.1" max="2.0" step="0.1" value="0.8"> <span
+                id="pipeLengthVal">0.8</span></label>
+        <label>时间步长 (dt): <input type="range" id="dt" min="0.001" max="0.02" step="0.001" value="0.005"> <span
+                id="dtVal">0.005</span></label>
+        <label>注入量: <input type="range" id="injectAmount" min="0.1" max="4.0" step="0.1" value="2.6"> <span
+                id="injectVal">2.6</span></label>
+        <label>注入半径: <input type="range" id="injectRadius" min="0.002" max="0.151" step="0.0002" value="0.01"> <span
+                id="radiusVal">0.01</span></label>
+        <label>蒸发速率: <input type="range" id="evaporation" min="0.0" max="0.01" step="0.0001" value="0.0001"> <span
+                id="evapVal">0.0001</span></label>
+        <label>浅水颜色: <input type="color" id="shallowColor" value="#40a0c0"></label>
+        <label>深水颜色: <input type="color" id="deepColor" value="#0a4060"></label>
+        <button id="resetBtn"
+            style="margin-top: 10px; padding: 5px 15px; cursor: pointer; pointer-events: auto;">重置水体</button>
+    </div>
+
+    <script type="module">
+        // ========================================
+        // 核心配置
+        // ========================================
+        const TERRAIN_SIZE = 10;     // 地形尺寸
+        const HEIGHT_SCALE = 2.0;    // 高度缩放
+
+        // 物理参数 - 平衡质量感与流动性
+        const params = {
+            gravity: 15.0,       // 较大重力保持质量感
+            pipeArea: 0.35,      // 适中管道面积，保持流动性
+            pipeLength: 0.8,     // 适中管道长度
+            dt: 0.005,           // 适中时间步长
+            injectAmount: 2.6,
+            injectRadius: 0.01,
+            evaporation: 0.0001  // 每一小步蒸发的比例
+        };
+
+        // ========================================
+        // 场景初始化
+        // ========================================
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(4, 4, 4);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // ========================================
+        // 1. 加载地形数据
+        // ========================================
+        const file = '/Public/dem/terrain8.tif';
+        const res = await fetch(file);
+        const arrayBuffer = await res.arrayBuffer();
+        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+        const image = await tiff.getImage();
+        const rasters = await image.readRasters();
+        const tiffWidth = image.getWidth();
+        const tiffHeight = image.getHeight();
+        const elevationData = new Float32Array(rasters[0]);
+
+        // 计算高度范围
+        let minElevation = Infinity, maxElevation = -Infinity;
+        for (let i = 0; i < elevationData.length; i++) {
+            const val = elevationData[i];
+            if (val !== 0) {
+                minElevation = Math.min(minElevation, val);
+                maxElevation = Math.max(maxElevation, val);
+            }
+        }
+
+        // 创建归一化高度数据
+        const heightData = new Float32Array(tiffWidth * tiffHeight);
+        for (let i = 0; i < elevationData.length; i++) {
+            heightData[i] = (elevationData[i] - minElevation) / (maxElevation - minElevation);
+        }
+
+        // 创建高度纹理 (原始分辨率) - 使用 RGBA 提高兼容性
+        const heightDataRGBA = new Float32Array(tiffWidth * tiffHeight * 4);
+        for (let i = 0; i < heightData.length; i++) {
+            heightDataRGBA[i * 4] = heightData[i];
+        }
+        const heightTexture = new THREE.DataTexture(heightDataRGBA, tiffWidth, tiffHeight, THREE.RGBAFormat, THREE.FloatType);
+        heightTexture.needsUpdate = true;
+        heightTexture.minFilter = THREE.LinearFilter;
+        heightTexture.magFilter = THREE.LinearFilter;
+
+        // 创建模拟用的高度纹理 (全分辨率)
+        const simHeightData = new Float32Array(tiffWidth * tiffHeight * 4);
+        simHeightData.set(heightDataRGBA);
+        const simHeightTexture = new THREE.DataTexture(simHeightData, tiffWidth, tiffHeight, THREE.RGBAFormat, THREE.FloatType);
+        simHeightTexture.needsUpdate = true;
+        simHeightTexture.minFilter = THREE.NearestFilter;
+        simHeightTexture.magFilter = THREE.NearestFilter;
+
+        // ========================================
+        // 2. 创建可视地形网格
+        // ========================================
+        const terrainAspect = tiffHeight / tiffWidth;
+        const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE * terrainAspect, tiffWidth - 1, tiffHeight - 1);
+        const terrainMat = new THREE.MeshStandardMaterial({
+            color: 0x3a5f3a,
+            wireframe: false,
+            roughness: 0.8,
+            metalness: 0.1
+        });
+
+        const posAttr = terrainGeo.attributes.position.array;
+        for (let i = 0; i < heightData.length; i++) {
+            posAttr[i * 3 + 2] = heightData[i] * HEIGHT_SCALE;
+        }
+        terrainGeo.computeVertexNormals();
+
+        const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+        terrainMesh.rotation.x = -Math.PI / 2;
+        scene.add(terrainMesh);
+
+        // 光照
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 5);
+        scene.add(dirLight);
+
+        // ========================================
+        // 3. 创建 GPGPU 渲染目标 (Ping-Pong 双缓冲)
+        // ========================================
+        function createRenderTarget(useLinear = false) {
+            return new THREE.WebGLRenderTarget(tiffWidth, tiffHeight, {
+                minFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                magFilter: useLinear ? THREE.LinearFilter : THREE.NearestFilter,
+                format: THREE.RGBAFormat,
+                type: THREE.FloatType,
+                depthBuffer: false,
+                stencilBuffer: false
+            });
+        }
+
+        // 水深场双缓冲 - 使用线性过滤以获得平滑边缘
+        let rtWater = [createRenderTarget(true), createRenderTarget(true)];
+        // 通量场双缓冲 - 保持最近邻过滤以确保模拟精度
+        let rtFlux = [createRenderTarget(false), createRenderTarget(false)];
+
+        let currentBuffer = 0;
+
+        // 初始化水深和通量为0
+        const initData = new Float32Array(tiffWidth * tiffHeight * 4);
+        const initTexture = new THREE.DataTexture(initData, tiffWidth, tiffHeight, THREE.RGBAFormat, THREE.FloatType);
+        initTexture.needsUpdate = true;
+
+        // GPGPU 场景和相机
+        const gpgpuScene = new THREE.Scene();
+        const gpgpuCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const gpgpuQuad = new THREE.PlaneGeometry(2, 2);
+
+        // ========================================
+        // 4. 创建计算材质
+        // ========================================
+        const { createFluxShader, createWaterShader, createWaterRenderMaterial, createGPGPUMaterial } = window.FluidShaders;
+
+        // 通量计算材质
+        const fluxShader = createFluxShader();
+        const fluxUniforms = {
+            uWaterTex: { value: null },
+            uHeightTex: { value: simHeightTexture },
+            uFluxTex: { value: null },
+            uResolution: { value: new THREE.Vector2(tiffWidth, tiffHeight) },
+            uDt: { value: params.dt },
+            uGravity: { value: params.gravity },
+            uPipeArea: { value: params.pipeArea },
+            uPipeLength: { value: params.pipeLength }
+        };
+        const fluxMaterial = createGPGPUMaterial(fluxShader, fluxUniforms);
+        const fluxMesh = new THREE.Mesh(gpgpuQuad, fluxMaterial);
+
+        // 水深更新材质
+        const waterShader = createWaterShader();
+        const waterUniforms = {
+            uWaterTex: { value: null },
+            uFluxTex: { value: null },
+            uHeightTex: { value: simHeightTexture },
+            uResolution: { value: new THREE.Vector2(tiffWidth, tiffHeight) },
+            uDt: { value: params.dt },
+            uPipeLength: { value: params.pipeLength },
+            uInjectActive: { value: false },
+            uInjectPos: { value: new THREE.Vector2(-1, -1) },
+            uInjectRadius: { value: params.injectRadius },
+            uInjectAmount: { value: params.injectAmount },
+            uEvaporation: { value: 1.0 - params.evaporation },
+            uSlopeDir: { value: new THREE.Vector2(0, 0) }
+        };
+        const waterMaterial = createGPGPUMaterial(waterShader, waterUniforms);
+        const waterMesh = new THREE.Mesh(gpgpuQuad.clone(), waterMaterial);
+
+        // ========================================
+        // 5. 创建水面渲染网格
+        // ========================================
+        // 水面网格使用更高分辨率以获得平滑边缘
+        const waterGeo = new THREE.PlaneGeometry(
+            TERRAIN_SIZE,
+            TERRAIN_SIZE * terrainAspect,
+            tiffWidth * 2 - 1,
+            tiffHeight * 2 - 1
+        );
+        const waterRenderMat = createWaterRenderMaterial();
+        waterRenderMat.uniforms.uHeightTex.value = heightTexture;
+        waterRenderMat.uniforms.uHeightScale.value = HEIGHT_SCALE;
+        waterRenderMat.uniforms.uMaxDepth.value = 0.05; // 再次大幅调低，让薄水层看起来更明显（更实）
+        waterRenderMat.uniforms.uResolution.value.set(tiffWidth, tiffHeight);
+
+        // --- Lighting Update ---
+        waterRenderMat.uniforms.uTerrainSize.value = TERRAIN_SIZE;
+        waterRenderMat.uniforms.uLightDir.value.copy(dirLight.position).normalize();
+        waterRenderMat.uniforms.uSpecularColor.value.setHex(0xffffff);
+        waterRenderMat.uniforms.uShininess.value = 100.0;
+
+        const waterSurface = new THREE.Mesh(waterGeo, waterRenderMat);
+        waterSurface.rotation.x = -Math.PI / 2;
+        waterSurface.position.y = 0.001; // 稍微偏移防止 z-fighting
+        scene.add(waterSurface);
+
+        // ========================================
+        // 6. 射线检测和点击交互
+        // ========================================
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let isInjecting = false;
+        let injectUV = new THREE.Vector2();
+
+        function onMouseDown(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrainMesh);
+
+            if (intersects.length > 0) {
+                const uv = intersects[0].uv;
+                // 翻转 V 坐标以匹配模拟纹理方向
+                injectUV.set(uv.x, 1.0 - uv.y);
+
+                // 计算地形梯度方向
+                const slopeDir = calculateSlopeDirection(uv.x, 1.0 - uv.y);
+                waterUniforms.uSlopeDir.value.copy(slopeDir);
+
+                isInjecting = true;
+                waterUniforms.uInjectActive.value = true;
+                waterUniforms.uInjectPos.value.copy(injectUV);
+            }
+        }
+
+        function onMouseUp() {
+            isInjecting = false;
+            waterUniforms.uInjectActive.value = false;
+        }
+
+        function onMouseMove(event) {
+            if (!isInjecting) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrainMesh);
+
+            if (intersects.length > 0) {
+                const uv = intersects[0].uv;
+                // 翻转 V 坐标以匹配模拟纹理方向
+                injectUV.set(uv.x, 1.0 - uv.y);
+                waterUniforms.uInjectPos.value.copy(injectUV);
+
+                const slopeDir = calculateSlopeDirection(uv.x, 1.0 - uv.y);
+                waterUniforms.uSlopeDir.value.copy(slopeDir);
+            }
+        }
+
+        // 计算地形梯度方向 (归一化)
+        function calculateSlopeDirection(u, v) {
+            const texelX = 1 / tiffWidth;
+            const texelY = 1 / tiffHeight;
+
+            const ix = Math.floor(u * tiffWidth);
+            const iy = Math.floor(v * tiffHeight);
+
+            const getHeight = (x, y) => {
+                x = Math.max(0, Math.min(tiffWidth - 1, x));
+                y = Math.max(0, Math.min(tiffHeight - 1, y));
+                // 由于改用了 RGBA 格式，这里索引需要 * 4 并取第一个通道
+                return simHeightData[(y * tiffWidth + x) * 4];
+            };
+
+            const hC = getHeight(ix, iy);
+            const hR = getHeight(ix + 1, iy);
+            const hL = getHeight(ix - 1, iy);
+            const hT = getHeight(ix, iy + 1);
+            const hB = getHeight(ix, iy - 1);
+
+            // 梯度指向高处，我们取反得到下坡方向
+            // BUG FIX: 之前除以 texelX/Y 会导致长宽比不对时方向错误 (例如 1/W 被变成了 *W)
+            // 正确的做法是：物理空间的一个单位步长，对应 UV 空间 1/W (或 1/H)
+            // 所以分量应该乘以 texelX/Y (即除以 W/H)
+            const gradX = -(hR - hL) * texelX;
+            const gradY = -(hT - hB) * texelY;
+
+            const len = Math.sqrt(gradX * gradX + gradY * gradY);
+            // 增加一点容差防止除零
+            if (len > 1e-6) {
+                return new THREE.Vector2(gradX / len, gradY / len);
+            }
+            return new THREE.Vector2(0, 0);
+        }
+
+        renderer.domElement.addEventListener('mousedown', onMouseDown);
+        renderer.domElement.addEventListener('mouseup', onMouseUp);
+        renderer.domElement.addEventListener('mousemove', onMouseMove);
+        renderer.domElement.addEventListener('mouseleave', onMouseUp);
+
+        // ========================================
+        // 7. UI 控件
+        // ========================================
+        document.getElementById('gravity').addEventListener('input', (e) => {
+            params.gravity = parseFloat(e.target.value);
+            fluxUniforms.uGravity.value = params.gravity;
+            document.getElementById('gravityVal').textContent = params.gravity.toFixed(1);
+        });
+
+        document.getElementById('pipeArea').addEventListener('input', (e) => {
+            params.pipeArea = parseFloat(e.target.value);
+            fluxUniforms.uPipeArea.value = params.pipeArea;
+            document.getElementById('pipeAreaVal').textContent = params.pipeArea.toFixed(2);
+        });
+
+        document.getElementById('pipeLength').addEventListener('input', (e) => {
+            params.pipeLength = parseFloat(e.target.value);
+            fluxUniforms.uPipeLength.value = params.pipeLength;
+            waterUniforms.uPipeLength.value = params.pipeLength;
+            document.getElementById('pipeLengthVal').textContent = params.pipeLength.toFixed(1);
+        });
+
+        document.getElementById('dt').addEventListener('input', (e) => {
+            params.dt = parseFloat(e.target.value);
+            fluxUniforms.uDt.value = params.dt;
+            waterUniforms.uDt.value = params.dt;
+            document.getElementById('dtVal').textContent = params.dt.toFixed(3);
+        });
+
+        document.getElementById('injectAmount').addEventListener('input', (e) => {
+            params.injectAmount = parseFloat(e.target.value);
+            waterUniforms.uInjectAmount.value = params.injectAmount;
+            document.getElementById('injectVal').textContent = params.injectAmount.toFixed(1);
+        });
+
+        document.getElementById('injectRadius').addEventListener('input', (e) => {
+            params.injectRadius = parseFloat(e.target.value);
+            waterUniforms.uInjectRadius.value = params.injectRadius;
+            document.getElementById('radiusVal').textContent = params.injectRadius.toFixed(3);
+        });
+
+        document.getElementById('evaporation').addEventListener('input', (e) => {
+            params.evaporation = parseFloat(e.target.value);
+            waterUniforms.uEvaporation.value = 1.0 - params.evaporation;
+            document.getElementById('evapVal').textContent = params.evaporation.toFixed(4);
+        });
+
+        document.getElementById('shallowColor').addEventListener('input', (e) => {
+            waterRenderMat.uniforms.uWaterColor.value.set(e.target.value);
+        });
+
+        document.getElementById('deepColor').addEventListener('input', (e) => {
+            waterRenderMat.uniforms.uDeepColor.value.set(e.target.value);
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            resetSimulation();
+        });
+
+        function resetSimulation() {
+            const clearColor = new THREE.Color(0, 0, 0);
+            renderer.setClearColor(clearColor, 0);
+
+            // 清除所有水深缓冲
+            renderer.setRenderTarget(rtWater[0]);
+            renderer.clear();
+            renderer.setRenderTarget(rtWater[1]);
+            renderer.clear();
+
+            // 清除所有通量缓冲
+            renderer.setRenderTarget(rtFlux[0]);
+            renderer.clear();
+            renderer.setRenderTarget(rtFlux[1]);
+            renderer.clear();
+
+            // 重置主渲染器设置
+            renderer.setRenderTarget(null);
+        }
+
+        // ========================================
+        // 8. 模拟步进函数
+        // ========================================
+        function simulationStep() {
+            const curr = currentBuffer;
+            const next = 1 - curr;
+
+            // 步骤1: 计算通量
+            gpgpuScene.remove(waterMesh);
+            gpgpuScene.add(fluxMesh);
+
+            fluxUniforms.uWaterTex.value = rtWater[curr].texture;
+            fluxUniforms.uFluxTex.value = rtFlux[curr].texture;
+
+            renderer.setRenderTarget(rtFlux[next]);
+            renderer.render(gpgpuScene, gpgpuCamera);
+
+            // 步骤2: 更新水深
+            gpgpuScene.remove(fluxMesh);
+            gpgpuScene.add(waterMesh);
+
+            waterUniforms.uWaterTex.value = rtWater[curr].texture;
+            waterUniforms.uFluxTex.value = rtFlux[next].texture;
+
+            renderer.setRenderTarget(rtWater[next]);
+            renderer.render(gpgpuScene, gpgpuCamera);
+
+            // 步骤3: 交换缓冲
+            currentBuffer = next;
+
+            // 更新水面渲染材质
+            waterRenderMat.uniforms.uWaterTex.value = rtWater[currentBuffer].texture;
+        }
+
+        // ========================================
+        // 11. 水位实时监控网格 (Debug)
+        // ========================================
+        const debugCanvas = document.getElementById('debugCanvas');
+
+        const debugCtx = debugCanvas.getContext('2d');
+
+
+        debugCanvas.width = fluxCanvas.width = tiffWidth;
+        debugCanvas.height = fluxCanvas.height = tiffHeight;
+
+        const pixelData = new Float32Array(tiffWidth * tiffHeight * 4);
+        const imageData = new ImageData(tiffWidth, tiffHeight);
+        const fluxImageData = new ImageData(tiffWidth, tiffHeight);
+
+        function updateWaterDebug() {
+            // 1. 读取水深缓冲区 (buffA)
+            renderer.readRenderTargetPixels(rtWater[currentBuffer], 0, 0, tiffWidth, tiffHeight, pixelData);
+            for (let i = 0; i < tiffWidth * tiffHeight; i++) {
+                const depth = pixelData[i * 4];
+                let val = 0;
+                // 降低 Debug 视图的显示阈值，捕捉微弱水流
+                if (depth > 1e-9) {
+                    val = Math.pow(depth, 0.4) * 255;
+                    val = Math.max(val, 40);
+                }
+                val = Math.min(val, 255);
+                const idx = i * 4;
+                imageData.data[idx + 0] = val * 0.2;
+                imageData.data[idx + 1] = val * 0.8;
+                imageData.data[idx + 2] = val;
+                imageData.data[idx + 3] = 255;
+            }
+            debugCtx.putImageData(imageData, 0, 0);
+        }
+
+        // ========================================
+        // 9. 动画循环
+        // ========================================
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // FPS 计算
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = now;
+                document.getElementById('stats').textContent = `FPS: ${fps}`;
+            }
+
+            // 执行多次模拟步进以提高稳定性（增加子步数配合较小的时间步长）
+            const subSteps = 5;
+            for (let i = 0; i < subSteps; i++) {
+                simulationStep();
+            }
+
+            // 更新调试网格
+            updateWaterDebug();
+
+            controls.update();
+
+            // 重置渲染目标并渲染主场景
+            renderer.setRenderTarget(null);
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // ========================================
+        // 10. 窗口调整
+        // ========================================
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

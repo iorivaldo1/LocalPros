@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEM+DOM 地形可视化</title>
+    <script src="/public/js/three.min.js"></script>
+    <script src="/public/js/OrbitControls.js"></script>
+    <script src="/public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #050a10;
+        }
+    </style>
+</head>
+
+<body>
+
+    <script type="module">
+        // ========================================
+        // 核心配置
+        // ========================================
+        const TERRAIN_SIZE = 10;     // 地形尺寸
+        const HEIGHT_SCALE = 1.0;    // 高度缩放
+
+        // ========================================
+        // 场景初始化
+        // ========================================
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 10, 1);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // ========================================
+        // 1. 加载 DEM 数据
+        // ========================================
+        const file = '/Public/dem/terrain1.tif';
+        const res = await fetch(file);
+        const arrayBuffer = await res.arrayBuffer();
+        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+        const image = await tiff.getImage();
+        const rasters = await image.readRasters();
+        const tiffWidth = image.getWidth();
+        const tiffHeight = image.getHeight();
+        const elevationData = new Float32Array(rasters[0]);
+
+        // 计算高度范围
+        let minElevation = Infinity, maxElevation = -Infinity;
+        for (let i = 0; i < elevationData.length; i++) {
+            const val = elevationData[i];
+            if (val !== 0) {
+                minElevation = Math.min(minElevation, val);
+                maxElevation = Math.max(maxElevation, val);
+            }
+        }
+
+        // 创建归一化高度数据
+        const heightData = new Float32Array(tiffWidth * tiffHeight);
+        for (let i = 0; i < elevationData.length; i++) {
+            heightData[i] = (elevationData[i] - minElevation) / (maxElevation - minElevation);
+        }
+
+        // ========================================
+        // 2. 加载 DOM (正射影像)
+        // ========================================
+        const domFile = '/Public/dom/terrain1.tif';
+        const domRes = await fetch(domFile);
+        const domArrayBuffer = await domRes.arrayBuffer();
+        const domTiff = await GeoTIFF.fromArrayBuffer(domArrayBuffer);
+        const domImage = await domTiff.getImage();
+        const domRasters = await domImage.readRasters();
+        const dWidth = domImage.getWidth();
+        const dHeight = domImage.getHeight();
+        const bands = domRasters.length;
+        const domData = new Uint8Array(dWidth * dHeight * 4);
+        for (let i = 0; i < dWidth * dHeight; i++) {
+            if (bands >= 3) {
+                domData[i * 4 + 0] = domRasters[0][i];
+                domData[i * 4 + 1] = domRasters[1][i];
+                domData[i * 4 + 2] = domRasters[2][i];
+                domData[i * 4 + 3] = bands >= 4 ? domRasters[3][i] : 255;
+            } else {
+                const val = domRasters[0][i];
+                domData[i * 4 + 0] = val;
+                domData[i * 4 + 1] = val;
+                domData[i * 4 + 2] = val;
+                domData[i * 4 + 3] = 255;
+            }
+        }
+        const domTexture = new THREE.DataTexture(domData, dWidth, dHeight, THREE.RGBAFormat, THREE.UnsignedByteType);
+        domTexture.minFilter = THREE.LinearFilter;
+        domTexture.magFilter = THREE.LinearFilter;
+        domTexture.needsUpdate = true;
+
+        // ========================================
+        // 3. 光照
+        // ========================================
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 5);
+        scene.add(dirLight);
+
+        // ========================================
+        // 4. 创建地形网格
+        // ========================================
+        const terrainAspect = tiffHeight / tiffWidth;
+        const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE * terrainAspect, tiffWidth - 1, tiffHeight - 1);
+
+        const terrainMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uDomTex: { value: domTexture }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uDomTex;
+                varying vec2 vUv;
+                void main() {
+                    // 翻转 Y 轴匹配 GeoTIFF 数据方向
+                    vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+                    gl_FragColor = texture2D(uDomTex, uv);
+                }
+            `
+        });
+
+        const posAttr = terrainGeo.attributes.position.array;
+        for (let i = 0; i < heightData.length; i++) {
+            posAttr[i * 3 + 2] = heightData[i] * HEIGHT_SCALE;
+        }
+        terrainGeo.computeVertexNormals();
+
+        const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+        terrainMesh.rotation.x = -Math.PI / 2;
+        scene.add(terrainMesh);
+
+        // ========================================
+        // 5. 动画循环
+        // ========================================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // ========================================
+        // 6. 窗口调整
+        // ========================================
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

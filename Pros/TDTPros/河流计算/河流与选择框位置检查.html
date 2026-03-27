@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="getDem">T</button>
+
+
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        //禁用双击放大
+        map.disableDoubleClickZoom()
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        const riverList = []
+        $.get('http://localhost:8080/localGEO/getYARiver').then(res => {
+            res.forEach(riv => {
+                const coord_json = JSON.parse(riv.geometry).coordinates
+                const riv_name = riv.name
+                var points = []
+                coord_json.forEach(p => {
+                    points.push(new T.LngLat(p[0], p[1]))
+                })
+                var line = new T.Polyline(points, {
+                    color: 'red',
+                    weight: 0.8,
+                    opacity: 0.8,
+                    lineStyle: "dash",
+                });
+                map.addOverLay(line);
+                riverList.push([line, riv_name])
+            })
+
+        })
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });;
+
+        $('#getDem').on('click', HD1)
+
+        async function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            const bbox_geo = await getBbox()
+            const riv_ins = []
+            riverList.forEach(river => {
+                if (bbox_geo.currentBounds.intersects(river[0].getBounds())) {
+                    const riv_coords = river[0].getLngLats()
+                    const riv_bbox_intersects = []
+                    for (let i = 0; i < riv_coords.length; i++) {
+                        if (bbox_geo.currentBounds.contains(riv_coords[i])) {
+                            riv_bbox_intersects.push(riv_coords[i])
+                        }
+                    }
+                    if (riv_bbox_intersects.length > 0) {
+                        riv_ins.push([riv_bbox_intersects,river[1]])
+                    }
+
+                }
+            })
+
+            riv_ins.forEach(riv => {
+                console.log(riv)
+                var line = new T.Polyline(riv[0], {
+                    color: 'blue',
+                    weight: 3,
+                    opacity: 0.8,
+                    lineStyle: "dashed",
+                });
+                map.addOverLay(line);
+            })
+        }
+
+        function getBbox() {
+            return new Promise((resolve, reject) => {
+                const handler = (e) => {
+                    const bbox = e;
+                    recTool.removeEventListener('draw', handler);
+                    resolve(bbox);
+                };
+                recTool.addEventListener('draw', handler);
+            });
+        }
+
+    </script>
+</body>
+
+</html>

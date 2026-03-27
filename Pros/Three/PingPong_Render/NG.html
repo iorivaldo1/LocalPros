@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+
+        #controls {
+            position: absolute;
+            top: 100px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+
+        .control-btn {
+            margin: 5px;
+            padding: 5px 10px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .control-btn:hover {
+            background: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">初始化中...</div>
+    <div id="controls">
+        <div>控制：</div>
+        <button class="control-btn" onclick="resetTerrain()">重置</button>
+        <button class="control-btn" onclick="increaseSegment()">增加隐藏段</button>
+        <button class="control-btn" onclick="decreaseSegment()">减少隐藏段</button>
+        <br>
+        <input type="range" id="segmentSlider" min="0" max="10" value="0" oninput="updateSegmentFromSlider(this.value)">
+        <div>隐藏段: <span id="segmentValue">0</span>/10</div>
+    </div>
+    <script type="module">
+        // 创建场景
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // 创建相机
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(15, 20, 15);
+        camera.lookAt(0, 0, 0);
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // 添加灯光
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // 添加轨道控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 加载地形数据
+        console.log('开始加载地形数据...');
+        const file = '/Public/imgs/dem/terrain2.tif';
+        const res = await fetch(file);
+        const arrayBuffer = await res.arrayBuffer();
+        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+        const image = await tiff.getImage();
+        const rasters = await image.readRasters();
+        const width = image.getWidth();
+        const height = image.getHeight();
+        const elevationData = new Float32Array(rasters[0]);
+
+        console.log('地形尺寸:', width, 'x', height);
+        console.log('高程数据点:', elevationData.length);
+
+        // 创建几何体 - 适当的分辨率
+        const resolutionFactor = 0.2; // 适当降低分辨率
+        const gridWidth = Math.floor(width * resolutionFactor);
+        const gridHeight = Math.floor(height * resolutionFactor);
+        
+        const geometry = new THREE.PlaneGeometry(30, 30 * height / width, gridWidth, gridHeight);
+        
+        console.log('几何体网格:', gridWidth, 'x', gridHeight, '=', gridWidth * gridHeight, '个顶点');
+
+        // 计算高程范围
+        let maxElevation = -Infinity;
+        let minElevation = Infinity;
+
+        // 找到高程范围，过滤异常值
+        for (let i = 0; i < elevationData.length; i++) {
+            const elev = elevationData[i];
+            if (elev > maxElevation && elev < 10000) maxElevation = elev;
+            if (elev < minElevation && elev > -10000) minElevation = elev;
+        }
+
+        // 如果数据异常，使用合理的默认值
+        if (!isFinite(minElevation) || !isFinite(maxElevation) || minElevation >= maxElevation) {
+            minElevation = 0;
+            maxElevation = 100;
+            console.warn('高程数据异常，使用默认范围');
+        }
+
+        console.log('高程范围:', minElevation.toFixed(2), '-', maxElevation.toFixed(2));
+        console.log('高程差:', (maxElevation - minElevation).toFixed(2));
+
+        // 设置顶点高程并存储原始高程
+        const positions = geometry.attributes.position.array;
+        const originalElevations = [];
+
+        // 计算采样步长
+        const xStep = width / gridWidth;
+        const yStep = height / gridHeight;
+        
+        console.log('采样步长:', xStep.toFixed(2), 'x', yStep.toFixed(2));
+
+        // 收集所有高程值用于统计
+        const allHeights = [];
+
+        for (let y = 0; y <= gridHeight; y++) {
+            for (let x = 0; x <= gridWidth; x++) {
+                // 计算原始数据中的索引
+                const origX = Math.min(Math.floor(x * xStep), width - 1);
+                const origY = Math.min(Math.floor(y * yStep), height - 1);
+                const origIndex = origY * width + origX;
+                
+                let normalizedHeight;
+                
+                if (origIndex < elevationData.length) {
+                    const elev = elevationData[origIndex];
+                    
+                    // 归一化高程 (0-1)
+                    if (maxElevation === minElevation) {
+                        normalizedHeight = 0;
+                    } else {
+                        // 限制高程在合理范围内
+                        const clampedElev = Math.max(minElevation, Math.min(maxElevation, elev));
+                        normalizedHeight = (clampedElev - minElevation) / (maxElevation - minElevation);
+                    }
+                    
+                    allHeights.push(normalizedHeight);
+                } else {
+                    normalizedHeight = 0;
+                }
+                
+                originalElevations.push(normalizedHeight);
+                
+                // 设置顶点Z坐标（使用适中的高度缩放）
+                const vertexIndex = (y * (gridWidth + 1) + x) * 3;
+                positions[vertexIndex + 2] = normalizedHeight * 8; // 适当的高度缩放
+            }
+        }
+
+        geometry.attributes.position.needsUpdate = true;
+        geometry.computeVertexNormals();
+
+        console.log('几何体创建完成');
+        console.log('顶点数:', geometry.attributes.position.count);
+        console.log('原始高程数组长度:', originalElevations.length);
+        console.log('高程统计:');
+        console.log('  - 最小值:', Math.min(...allHeights).toFixed(4));
+        console.log('  - 最大值:', Math.max(...allHeights).toFixed(4));
+        console.log('  - 平均值:', (allHeights.reduce((a, b) => a + b, 0) / allHeights.length).toFixed(4));
+
+        // 简化的地形渲染器
+        class SimpleTerrainRenderer {
+            constructor(geometry, originalElevations) {
+                this.geometry = geometry;
+                this.originalElevations = originalElevations;
+                this.segments = 10;
+                this.currentSegment = 0;
+                this.vertexCount = geometry.attributes.position.count;
+
+                // 创建显示材质的uniforms
+                this.uniforms = {
+                    time: { value: 0 },
+                    currentSegment: { value: 0 },
+                    segmentHeight: { value: 1.0 / 10.0 },
+                    minElevation: { value: minElevation },
+                    maxElevation: { value: maxElevation },
+                    originalElevations: { value: this.createElevationTexture() },
+                    heightScale: { value: 8.0 },
+                    showHidden: { value: false } // 是否显示隐藏部分
+                };
+
+                // 创建显示材质
+                this.material = this.createTerrainMaterial();
+
+                // 创建网格并旋转使其水平
+                this.mesh = new THREE.Mesh(geometry, this.material);
+                this.mesh.rotation.x = -Math.PI / 2;
+                scene.add(this.mesh);
+
+                // 初始状态显示
+                this.updateInfo();
+            }
+
+            createElevationTexture() {
+                // 创建高程纹理 - 更精确的方法
+                const size = 512;
+                const data = new Float32Array(size * size);
+                
+                // 初始化所有值为0
+                data.fill(0);
+
+                // 计算每个顶点在纹理中的位置
+                const verticesPerRow = gridWidth + 1;
+                const verticesPerCol = gridHeight + 1;
+                
+                for (let y = 0; y < verticesPerCol; y++) {
+                    for (let x = 0; x < verticesPerRow; x++) {
+                        const vertexIndex = y * verticesPerRow + x;
+                        if (vertexIndex >= this.originalElevations.length) continue;
+                        
+                        // 计算纹理坐标
+                        const texX = x / gridWidth;
+                        const texY = y / gridHeight;
+                        
+                        const pixelX = Math.floor(texX * (size - 1));
+                        const pixelY = Math.floor(texY * (size - 1));
+                        const pixelIndex = pixelY * size + pixelX;
+                        
+                        if (pixelIndex < data.length) {
+                            data[pixelIndex] = this.originalElevations[vertexIndex];
+                        }
+                    }
+                }
+
+                const texture = new THREE.DataTexture(
+                    data,
+                    size,
+                    size,
+                    THREE.RedFormat,
+                    THREE.FloatType
+                );
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.wrapS = THREE.ClampToEdgeWrapping;
+                texture.wrapT = THREE.ClampToEdgeWrapping;
+                texture.needsUpdate = true;
+
+                console.log('高程纹理创建完成，尺寸:', size, 'x', size);
+                return texture;
+            }
+
+            createTerrainMaterial() {
+                return new THREE.ShaderMaterial({
+                    uniforms: this.uniforms,
+                    vertexShader: `
+                        uniform float currentSegment;
+                        uniform float segmentHeight;
+                        uniform sampler2D originalElevations;
+                        uniform float minElevation;
+                        uniform float maxElevation;
+                        uniform float heightScale;
+                        uniform bool showHidden;
+                        
+                        varying vec3 vNormal;
+                        varying vec2 vUv;
+                        varying float vElevation;
+                        varying float vVisibility;
+                        
+                        void main() {
+                            // 传递UV坐标
+                            vUv = uv;
+                            
+                            // 获取原始高程
+                            float originalHeight = texture2D(originalElevations, uv).r;
+                            
+                            // 判断是否应该显示
+                            float segment = floor(originalHeight / segmentHeight);
+                            float visibility = 0.0;
+                            
+                            if (segment >= currentSegment) {
+                                visibility = 1.0;
+                            }
+                            
+                            // 计算实际高程
+                            float actualElevation = minElevation + originalHeight * (maxElevation - minElevation);
+                            
+                            // 创建新位置
+                            vec3 newPosition = position;
+                            
+                            if (visibility > 0.5) {
+                                // 显示：使用缩放后的高程
+                                newPosition.z = originalHeight * heightScale;
+                            } else {
+                                // 隐藏：直接删除 - 将顶点移动到很远的地方
+                                // 这样三角形会被裁剪或变成极小的面积
+                                newPosition.z = -1000.0;
+                            }
+                            
+                            // 传递变量到片段着色器
+                            vNormal = normal;
+                            vElevation = actualElevation;
+                            vVisibility = visibility;
+                            
+                            // 计算最终位置
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform float minElevation;
+                        uniform float maxElevation;
+                        uniform bool showHidden;
+                        
+                        varying vec3 vNormal;
+                        varying vec2 vUv;
+                        varying float vElevation;
+                        varying float vVisibility;
+                        
+                        // 高程颜色映射
+                        vec3 elevationToColor(float elevation) {
+                            // 归一化高程
+                            float t = (elevation - minElevation) / (maxElevation - minElevation);
+                            
+                            // 颜色渐变
+                            if (t < 0.2) {
+                                return mix(vec3(0.0, 0.2, 0.4), vec3(0.0, 0.4, 0.7), t * 5.0);
+                            } else if (t < 0.4) {
+                                return mix(vec3(0.0, 0.4, 0.7), vec3(0.2, 0.6, 0.3), (t - 0.2) * 5.0);
+                            } else if (t < 0.7) {
+                                return mix(vec3(0.2, 0.6, 0.3), vec3(0.7, 0.6, 0.3), (t - 0.4) * 3.33);
+                            } else {
+                                return mix(vec3(0.7, 0.6, 0.3), vec3(1.0, 1.0, 1.0), (t - 0.7) * 3.33);
+                            }
+                        }
+                        
+                        void main() {
+                            // 如果顶点不可见，完全丢弃（不渲染）
+                            if (vVisibility < 0.5) {
+                                discard;
+                            }
+                            
+                            // 基础颜色
+                            vec3 baseColor = elevationToColor(vElevation);
+                            
+                            // 光照计算
+                            vec3 lightDir = normalize(vec3(0.8, 0.8, 0.6));
+                            float diffuse = max(dot(normalize(vNormal), lightDir), 0.4);
+                            
+                            // 添加一些环境光
+                            diffuse = mix(0.3, diffuse, 0.7);
+                            
+                            // 最终颜色
+                            vec3 finalColor = baseColor * diffuse;
+                            gl_FragColor = vec4(finalColor, 1.0);
+                        }
+                    `,
+                    side: THREE.DoubleSide,
+                    transparent: false
+                });
+            }
+
+            update() {
+                this.uniforms.time.value += 0.01;
+                this.uniforms.currentSegment.value = this.currentSegment;
+            }
+
+            setCurrentSegment(segment) {
+                this.currentSegment = Math.max(0, Math.min(this.segments, segment));
+                this.uniforms.currentSegment.value = this.currentSegment;
+                this.updateInfo();
+                
+                // 当隐藏段数变化时，重新计算几何体以确保三角形正确显示
+                this.updateGeometryVisibility();
+            }
+
+            updateGeometryVisibility() {
+                // 更新材质后需要重新计算法线
+                this.mesh.geometry.computeVertexNormals();
+            }
+
+            updateInfo() {
+                const visiblePercentage = ((this.segments - this.currentSegment) / this.segments * 100).toFixed(1);
+                const visibleVertices = Math.floor(this.vertexCount * (this.segments - this.currentSegment) / this.segments);
+                
+                document.getElementById('info').innerHTML = `
+                    状态信息：<br>
+                    当前隐藏段：${this.currentSegment}/${this.segments}<br>
+                    可见度：${visiblePercentage}%<br>
+                    可见顶点：${visibleVertices}/${this.vertexCount}<br>
+                    网格分辨率：${gridWidth} x ${gridHeight}<br>
+                    高程范围：${minElevation.toFixed(1)} - ${maxElevation.toFixed(1)}m
+                `;
+                document.getElementById('segmentValue').textContent = this.currentSegment;
+                document.getElementById('segmentSlider').value = this.currentSegment;
+            }
+
+            reset() {
+                this.currentSegment = 0;
+                this.uniforms.currentSegment.value = 0;
+                this.updateGeometryVisibility();
+                this.updateInfo();
+                console.log('地形已重置');
+            }
+        }
+
+        // 创建地形渲染器
+        console.log('创建地形渲染器...');
+        const terrainRenderer = new SimpleTerrainRenderer(geometry, originalElevations);
+
+        // 添加一个参考网格 - 修正：正确旋转网格
+        const gridHelper = new THREE.GridHelper(40, 40);
+        gridHelper.position.y = -0.1; // 稍微低于地形
+        gridHelper.rotation.x = Math.PI / 2; // 正确旋转到水平
+        scene.add(gridHelper);
+
+        // 添加坐标轴
+        const axesHelper = new THREE.AxesHelper(15);
+        scene.add(axesHelper);
+
+        // 添加一个平面作为地面
+        const groundGeometry = new THREE.PlaneGeometry(50, 50);
+        const groundMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x2a2a4a,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.5
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = Math.PI / 2;
+        ground.position.y = -0.2;
+        scene.add(ground);
+
+        // 渲染循环
+        function render() {
+            requestAnimationFrame(render);
+
+            // 更新地形渲染器
+            terrainRenderer.update();
+
+            // 渲染场景
+            renderer.render(scene, camera);
+            controls.update();
+        }
+
+        // 启动渲染循环
+        render();
+
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 全局控制函数
+        window.resetTerrain = () => {
+            terrainRenderer.reset();
+        };
+
+        window.increaseSegment = () => {
+            terrainRenderer.setCurrentSegment(terrainRenderer.currentSegment + 1);
+        };
+
+        window.decreaseSegment = () => {
+            terrainRenderer.setCurrentSegment(Math.max(0, terrainRenderer.currentSegment - 1));
+        };
+
+        window.updateSegmentFromSlider = (value) => {
+            terrainRenderer.setCurrentSegment(parseInt(value));
+        };
+
+        // 添加键盘控制
+        document.addEventListener('keydown', (event) => {
+            switch (event.key) {
+                case 'r':
+                case 'R':
+                    terrainRenderer.reset();
+                    break;
+                case 'ArrowUp':
+                    terrainRenderer.setCurrentSegment(terrainRenderer.currentSegment + 1);
+                    break;
+                case 'ArrowDown':
+                    terrainRenderer.setCurrentSegment(Math.max(0, terrainRenderer.currentSegment - 1));
+                    break;
+                case ' ':
+                    // 空格键切换是否显示隐藏部分
+                    terrainRenderer.uniforms.showHidden.value = !terrainRenderer.uniforms.showHidden.value;
+                    console.log('显示隐藏部分:', terrainRenderer.uniforms.showHidden.value);
+                    break;
+            }
+        });
+
+        console.log('应用初始化完成！');
+        console.log('使用说明：');
+        console.log('- 上下箭头：控制隐藏的段数');
+        console.log('- R键：重置地形');
+        console.log('- 空格键：切换显示隐藏部分');
+        console.log('- 鼠标：旋转/缩放/平移视图');
+        console.log('- 滑块：精确控制隐藏段数');
+    </script>
+</body>
+
+</html>

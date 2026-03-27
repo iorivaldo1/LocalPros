@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        #map {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+        }
+
+        #btn1 {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="btn1">T</button>
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 15);
+
+        var wmsLayer = new T.TileLayer.WMS(
+            'http://localhost:8080/geoserver/WMTS_DEM/wms',
+            {
+                layers: 'WMTS_DEM:DEM_YA_YC_FW_PL',
+                format: 'image/png',
+                transparent: true,
+                version: '1.1.1',
+                srs: 'EPSG:4326',
+                styles: '',
+                exceptions: 'application/vnd.ogc.se_inimage'
+            },
+            {
+                opacity: 0.7,
+                minZoom: 0,
+                maxZoom: 18
+            }
+        );
+        // 添加WMS图层
+        map.addLayer(wmsLayer);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });;
+
+
+        $('#btn1').on('click', HD1)
+        function HD1() {
+            var dis
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                var minX = e.currentBounds.getSouthWest().lng
+                var minY = e.currentBounds.getSouthWest().lat
+                var maxX = e.currentBounds.getNorthEast().lng
+                var maxY = e.currentBounds.getNorthEast().lat
+
+                var pro_p1 = LatLon2XY(minX, minY)
+                var pro_p2 = LatLon2XY(maxX, maxY)
+
+                var dom_width = Math.floor((pro_p2.y - pro_p1.y))
+                var dom_height = Math.floor((pro_p2.x - pro_p1.x))
+                console.log(dom_width, dom_height)
+
+                var imageURL =
+                    'http://localhost:8080/geoserver/WMS_DOM/wms?' +
+                    'Request=GetMap' +
+                    '&Service=WMS' +
+                    '&Version=1.1.0' +
+                    '&LAYERS=WMS_DOM%3ADOM_YA_YC' +
+                    '&STYLE=' +
+                    '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+                    '&WIDTH=' + dom_width +
+                    '&HEIGHT=' + dom_height +
+                    '&SRS=EPSG%3A4326' +
+                    '&FORMAT=image%2Fpng' +
+                    '&TRANSPARENT=true'
+                fetch(imageURL)
+
+                // test().then(()=>{
+                //     console.log('aaaaa')
+                // })
+            })
+
+            // async function test() {
+            //     await fetch(imageURL);
+            // }
+
+            // var imageURL =
+            //     'http://localhost:8080/geoserver/WMS_DOM/wms?' +
+            //     'Request=GetMap' +
+            //     '&Service=WMS' +
+            //     '&Version=1.1.0' +
+            //     '&LAYERS=WMS_DOM%3AtestDOM' +
+            //     '&STYLE=' +
+            //     '&BBOX=99.399667368486%2C30.3057032683858%2C99.4010236612594%2C30.307023869244' +
+            //     '&WIDTH=768' +
+            //     '&HEIGHT=746' +
+            //     '&SRS=EPSG%3A4326' +
+            //     '&FORMAT=image%2Fpng' +
+            //     '&TRANSPARENT=true'
+
+            // fetch(imageURL)
+
+
+        }
+    </script>
+</body>
+
+</html>

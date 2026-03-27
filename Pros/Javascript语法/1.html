@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script type="text/javascript" src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        const rectangle = new Cesium.RectangleGeometry({
+            ellipsoid: Cesium.Ellipsoid.default,
+            rectangle: Cesium.Rectangle.fromDegrees(100.0, 25.0, 120, 40.0),
+            height: 10000.0
+        });
+        const geometry = Cesium.RectangleGeometry.createGeometry(rectangle);
+        const myPrimitive1 = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: geometry
+            }),
+            appearance: new Cesium.MaterialAppearance({
+                material: Cesium.Material.fromType('Color', {
+                    color: new Cesium.Color(0.0, 1.0, 0.0, 1.0)
+                }),
+                faceForward: true
+            })
+        })
+        viewer.scene.primitives.add(myPrimitive1);
+
+        viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(
+                86.33, 13.31,
+                4295400
+            ),
+            orientation: {
+                heading: Cesium.Math.toRadians(33.74),
+                pitch: Cesium.Math.toRadians(-64.57),
+                roll: 0.0,
+            },
+        });
+    </script>
+    </div>
+</body>
+
+</html>

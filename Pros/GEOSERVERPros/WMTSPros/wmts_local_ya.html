@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <style>
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(102.607, 30.652), 12);
+        var imageURL =
+            'http://localhost:8080/geoserver/WMTS_F/gwc/service/wmts?' +
+            'Request=GetTile' + 
+            '&Service=WMTS' + 
+            '&Version=1.0.0' + 
+            '&LAYER=WMTS_F%3ARIVER_YA' + 
+            '&STYLE=' + 
+            '&Format=image%2Fpng' + 
+            '&TILEMATRIXSET=EPSG%3A900913' + 
+            '&TILEMATRIX=EPSG%3A900913%3A{z}' + 
+            '&TILEROW={y}' + 
+            '&TILECOL={x}' + 
+            '&authkey=' + '9cdfeadf8dfd3b043'
+        const southWest = new T.LngLat(101.9642680901, 28.862478591599995);
+        const northEast = new T.LngLat(103.4113808093, 30.922261509850014);
+        const f_bounds = new T.LngLatBounds(southWest, northEast);
+        var lay = new T.TileLayer(imageURL, { minZoom: 1, maxZoom: 18, bounds: f_bounds });
+        lay.setZIndex(1000)
+        map.addLayer(lay);
+
+
+    </script>
+</body>
+
+</html>

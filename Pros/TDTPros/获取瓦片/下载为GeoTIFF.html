@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>框选获取瓦片-只要18级</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
+
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #downloadGeoTiff {
+            position: absolute;
+            bottom: 60px;
+            left: 20px;
+            z-index: 450;
+            width: 100px;
+            height: 30px;
+        }
+
+        #coord {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 450;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 20px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: monospace;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        #previewContainer {
+            position: absolute;
+            top: 50px;
+            right: 50px;
+            z-index: 450;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            width: 500px;
+            display: none;
+        }
+
+        #previewTitle {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+            text-align: center;
+        }
+
+        #previewImageContainer {
+            width: 100%;
+            height: 400px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+            cursor: move;
+            background: #f5f5f5;
+        }
+
+        #previewImage {
+            position: absolute;
+            max-width: none;
+            transform-origin: 0 0;
+            transition: transform 0.1s ease-out;
+        }
+
+        #previewControls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        #previewControls button {
+            padding: 8px 15px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #previewControls button:hover {
+            background: #1976D2;
+        }
+
+        #zoomLevel {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        #closePreview {
+            margin-top: 10px;
+            width: 100%;
+            padding: 8px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #closePreview:hover {
+            background: #45a049;
+        }
+
+        #progressContainer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 500;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            min-width: 400px;
+            display: none;
+        }
+
+        #progressBar {
+            width: 100%;
+            height: 30px;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 15px;
+            position: relative;
+        }
+
+        #progressFill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 15px;
+        }
+
+        #progressText {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        #progressLabel {
+            font-size: 16px;
+            color: #666;
+            text-align: center;
+        }
+
+        #canvas1 {
+            display: none;  /* 隐藏canvas */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <button id="getDem">T</button>
+    <button id="downloadGeoTiff" style="display:none;">下载GeoTIFF</button>
+    
+    <!-- 坐标显示 -->
+    <div id="coord">经度: 0.00000, 纬度: 0.00000</div>
+    
+    <!-- 图片预览 -->
+    <div id="previewContainer">
+        <div id="previewTitle">图片预览 - 可拖动/滚轮缩放</div>
+        <div id="previewImageContainer">
+            <img id="previewImage" src="" alt="预览图片">
+        </div>
+        <div id="previewControls">
+            <button id="zoomIn">放大 (+)</button>
+            <div id="zoomLevel">100%</div>
+            <button id="zoomOut">缩小 (-)</button>
+            <button id="resetZoom">重置</button>
+        </div>
+        <button id="closePreview">关闭</button>
+    </div>
+    
+    <!-- 进度条 -->
+    <div id="progressContainer">
+        <div id="progressLabel">加载中...</div>
+        <div id="progressBar">
+            <div id="progressFill"></div>
+            <div id="progressText">0%</div>
+        </div>
+    </div>
+
+    <script>
+        // 瓦片转经纬度
+        function tileToLngLat(col, row, zoom) {
+            const tileCount = Math.pow(2, zoom);
+            const lng = (col / tileCount) * 360 - 180;
+            const n = Math.PI - (2 * Math.PI * row) / tileCount;
+            const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+            return [lng, lat];
+        }
+
+        // 经纬度转瓦片
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360;
+            const y = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
+                1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2;
+            const tileCount = Math.pow(2, zoom);
+            const tileCol = Math.floor(x * tileCount);
+            const tileRow = Math.floor(y * tileCount);
+
+            return [tileCol, tileRow];
+        }
+
+        // 保存全局变量用于存储地理信息
+        let currentGeoInfo = null;
+
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8)
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`
+            const wmtsUrl =
+                baseUrl +
+                'REQUEST=GetTile' +
+                '&SERVICE=WMTS' +
+                '&VERSION=1.0.0' +
+                '&LAYER=img' +
+                '&STYLE=default' +
+                '&TILEMATRIXSET=w' +
+                '&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+                '&TILECOL=' + tileCol +
+                '&TILEROW=' + tileRow +
+                '&TILEMATRIX=' + zoom
+
+            return wmtsUrl
+        }
+
+
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(100.03567, 31.20032), 13);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        // 监听鼠标移动事件，显示坐标
+        map.addEventListener("mousemove", function(e) {
+            var jd = e.lnglat.getLng().toFixed(5);
+            var wd = e.lnglat.getLat().toFixed(5);
+            var info = `经度: ${jd}, 纬度: ${wd}`;
+            $('#coord').text(info);
+        });
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+
+        // 更新进度条
+        function updateProgress(percent, label) {
+            $('#progressContainer').show();
+            $('#progressFill').css('width', percent + '%');
+            $('#progressText').text(percent.toFixed(0) + '%');
+            if (label) {
+                $('#progressLabel').text(label);
+            }
+        }
+
+        // 隐藏进度条
+        function hideProgress() {
+            $('#progressContainer').fadeOut(300);
+        }
+
+        // 图片预览缩放和平移功能
+        let previewState = {
+            scale: 1,
+            translateX: 0,
+            translateY: 0,
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            imgWidth: 0,
+            imgHeight: 0
+        };
+
+        // 显示图片预览
+        function showPreview(canvas) {
+            const dataURL = canvas.toDataURL('image/png');
+            const img = $('#previewImage')[0];
+            
+            img.onload = function() {
+                previewState.imgWidth = img.naturalWidth;
+                previewState.imgHeight = img.naturalHeight;
+                previewState.scale = 1;
+                previewState.translateX = 0;
+                previewState.translateY = 0;
+                updatePreviewTransform();
+            };
+            
+            img.src = dataURL;
+            $('#previewContainer').fadeIn(300);
+        }
+
+        // 更新图片变换
+        function updatePreviewTransform() {
+            const transform = `translate(${previewState.translateX}px, ${previewState.translateY}px) scale(${previewState.scale})`;
+            $('#previewImage').css('transform', transform);
+            $('#zoomLevel').text(Math.round(previewState.scale * 100) + '%');
+        }
+
+        // 鼠标滚轮缩放
+        $('#previewImageContainer').on('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.originalEvent.deltaY;
+            const zoomSpeed = 0.1;
+            
+            if (delta < 0) {
+                // 放大
+                previewState.scale = Math.min(previewState.scale + zoomSpeed, 10);
+            } else {
+                // 缩小
+                previewState.scale = Math.max(previewState.scale - zoomSpeed, 0.1);
+            }
+            
+            updatePreviewTransform();
+        });
+
+        // 鼠标拖动
+        $('#previewImageContainer').on('mousedown', function(e) {
+            previewState.isDragging = true;
+            previewState.startX = e.clientX - previewState.translateX;
+            previewState.startY = e.clientY - previewState.translateY;
+            $(this).css('cursor', 'grabbing');
+        });
+
+        $(document).on('mousemove', function(e) {
+            if (previewState.isDragging) {
+                previewState.translateX = e.clientX - previewState.startX;
+                previewState.translateY = e.clientY - previewState.startY;
+                updatePreviewTransform();
+            }
+        });
+
+        $(document).on('mouseup', function() {
+            if (previewState.isDragging) {
+                previewState.isDragging = false;
+                $('#previewImageContainer').css('cursor', 'move');
+            }
+        });
+
+        // 放大按钮
+        $('#zoomIn').on('click', function() {
+            previewState.scale = Math.min(previewState.scale + 0.2, 10);
+            updatePreviewTransform();
+        });
+
+        // 缩小按钮
+        $('#zoomOut').on('click', function() {
+            previewState.scale = Math.max(previewState.scale - 0.2, 0.1);
+            updatePreviewTransform();
+        });
+
+        // 重置按钮
+        $('#resetZoom').on('click', function() {
+            previewState.scale = 1;
+            previewState.translateX = 0;
+            previewState.translateY = 0;
+            updatePreviewTransform();
+        });
+
+        // 关闭预览
+        $('#closePreview').on('click', function() {
+            $('#previewContainer').fadeOut(300);
+        });
+
+        function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            recTool.addEventListener('draw', (e) => {
+                const zoom = 18
+                var west = e.currentBounds.getSouthWest().lng
+                var south = e.currentBounds.getSouthWest().lat
+                var east = e.currentBounds.getNorthEast().lng
+                var north = e.currentBounds.getNorthEast().lat
+
+                const nw = lngLatToTile(west, north, zoom);  // 西北角
+                const ne = lngLatToTile(east, north, zoom);  // 东北角
+                const sw = lngLatToTile(west, south, zoom);  // 西南角
+                const se = lngLatToTile(east, south, zoom);
+                const minCol = Math.min(nw[0], sw[0]);
+                const maxCol = Math.max(ne[0], se[0]);
+                const minRow = Math.min(ne[1], se[1]);  // 注意：行号从上到下增加
+                const maxRow = Math.max(nw[1], sw[1]);
+
+                const colCount = maxCol - minCol + 1;
+                const rowCount = maxRow - minRow + 1;
+                const totalTiles = colCount * rowCount;
+
+                const tiles = [];
+                for (let col = minCol; col <= maxCol; col++) {
+                    for (let row = minRow; row <= maxRow; row++) {
+                        tiles.push({
+                            // url: getTileWMTSUrlIMG(col, row, zoom),
+                            url: getTileWMTSUrlCIA(col, row, zoom),
+
+                            col: col,
+                            row: row,
+                        });
+                    }
+                }
+                
+                // 显示进度条
+                updateProgress(0, `准备加载 ${totalTiles} 个瓦片...`);
+                
+                // 测试：先下载一个瓦片看看颜色
+                console.log('测试瓦片URL:', tiles[0].url);
+                
+                stitchTilesWithPosition(tiles, 256, updateProgress).then(res=>{
+                    
+                    // 保存地理信息
+                    const nwCoord = tileToLngLat(minCol, minRow, zoom);
+                    const seCoord = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+                    
+                    currentGeoInfo = {
+                        canvas: res.canvas,
+                        bbox: {
+                            west: nwCoord[0],
+                            north: nwCoord[1],
+                            east: seCoord[0],
+                            south: seCoord[1]
+                        },
+                        width: res.canvas.width,
+                        height: res.canvas.height,
+                        zoom: zoom
+                    };
+                    
+                    console.log('地理信息:', currentGeoInfo);
+                    
+                    // 调试：检查canvas的一个像素颜色
+                    const testCtx = res.canvas.getContext('2d');
+                    const testPixel = testCtx.getImageData(res.canvas.width/2, res.canvas.height/2, 1, 1).data;
+                    console.log('中心像素颜色 RGBA:', testPixel[0], testPixel[1], testPixel[2], testPixel[3]);
+                    
+                    // 隐藏进度条
+                    hideProgress();
+                    
+                    // 显示图片预览
+                    showPreview(res.canvas);
+                    
+                    // 显示GeoTIFF下载按钮
+                    $('#downloadGeoTiff').show();
+
+                    // 不再下载PNG
+                    // downloadWithFilePicker(res.canvas,'map.png')
+
+                    //
+                })
+
+            })
+
+        }
+
+        // 下载GeoTIFF（使用World File方式）
+        $('#downloadGeoTiff').on('click', async function() {
+            if (!currentGeoInfo) {
+                alert('请先获取地图瓦片！');
+                return;
+            }
+
+            try {
+                console.log('开始生成GeoTIFF...');
+                
+                const canvas = currentGeoInfo.canvas;
+                const width = canvas.width;
+                const height = canvas.height;
+                const bbox = currentGeoInfo.bbox;
+                
+                // 计算像素分辨率
+                const pixelWidth = Math.abs(bbox.east - bbox.west) / width;
+                const pixelHeight = Math.abs(bbox.north - bbox.south) / height;
+                
+                console.log('Canvas尺寸:', width, 'x', height);
+                console.log('Bbox:', bbox);
+                console.log('Pixel resolution:', pixelWidth, pixelHeight);
+                
+                // 方案：生成TIFF + World File (.tfw)
+                // 使用PNG格式保存以保留颜色信息
+                canvas.toBlob(async function(imageBlob) {
+                    // 2. 生成World File内容
+                    // World File格式：
+                    // Line 1: x方向像素分辨率
+                    // Line 2: y方向旋转参数（0）
+                    // Line 3: x方向旋转参数（0）
+                    // Line 4: y方向像素分辨率（负值）
+                    // Line 5: 左上角x坐标
+                    // Line 6: 左上角y坐标
+                    const worldFileContent = [
+                        pixelWidth.toFixed(10),
+                        '0.0',
+                        '0.0',
+                        (-pixelHeight).toFixed(10),
+                        (bbox.west + pixelWidth / 2).toFixed(10),  // 像素中心
+                        (bbox.north - pixelHeight / 2).toFixed(10)  // 像素中心
+                    ].join('\n');
+                    
+                    // 3. 生成.prj文件（WGS84坐标系）
+                    const prjContent = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]';
+                    
+                    try {
+                        // 使用文件选择器API
+                        const handle = await window.showSaveFilePicker({
+                            suggestedName: 'map.tif',
+                            types: [{
+                                description: 'GeoTIFF with World File',
+                                accept: { 'image/tiff': ['.tif', '.tiff'] }
+                            }]
+                        });
+                        
+                        const fileName = handle.name.replace(/\.[^.]+$/, ''); // 去掉扩展名
+                        
+                        // 保存TIFF文件（使用PNG blob以保留颜色）
+                        const writable = await handle.createWritable();
+                        await writable.write(imageBlob);
+                        await writable.close();
+                        
+                        console.log('提示：文件已保存为PNG格式但扩展名为.tif，这样可以保留原始颜色信息');
+                        console.log('如需真正的TIFF格式，请在GIS软件中重新导出');
+                        
+                        // 保存World File (.tfw)
+                        const tfwHandle = await window.showSaveFilePicker({
+                            suggestedName: fileName + '.tfw',
+                            types: [{
+                                description: 'World File',
+                                accept: { 'text/plain': ['.tfw'] }
+                            }]
+                        });
+                        const tfwWritable = await tfwHandle.createWritable();
+                        await tfwWritable.write(worldFileContent);
+                        await tfwWritable.close();
+                        
+                        // 保存.prj文件
+                        const prjHandle = await window.showSaveFilePicker({
+                            suggestedName: fileName + '.prj',
+                            types: [{
+                                description: 'Projection File',
+                                accept: { 'text/plain': ['.prj'] }
+                            }]
+                        });
+                        const prjWritable = await prjHandle.createWritable();
+                        await prjWritable.write(prjContent);
+                        await prjWritable.close();
+                        
+                        console.log('GeoTIFF、World File和投影文件保存成功！');
+                        alert('GeoTIFF、World File (.tfw)和投影文件 (.prj) 保存成功！\n\n请确保三个文件名称一致（除了扩展名）');
+                        
+                    } catch (err) {
+                        if (err.name === 'AbortError') {
+                            console.log('用户取消了保存');
+                        } else {
+                            // 降级到传统下载
+                            console.log('使用传统下载方式...');
+                            
+                            // 下载TIFF
+                            const link1 = document.createElement('a');
+                            link1.href = URL.createObjectURL(imageBlob);
+                            link1.download = 'map.tif';
+                            link1.click();
+                            URL.revokeObjectURL(link1.href);
+                            
+                            // 下载World File
+                            const tfwBlob = new Blob([worldFileContent], { type: 'text/plain' });
+                            const link2 = document.createElement('a');
+                            link2.href = URL.createObjectURL(tfwBlob);
+                            link2.download = 'map.tfw';
+                            link2.click();
+                            URL.revokeObjectURL(link2.href);
+                            
+                            // 下载.prj文件
+                            const prjBlob = new Blob([prjContent], { type: 'text/plain' });
+                            const link3 = document.createElement('a');
+                            link3.href = URL.createObjectURL(prjBlob);
+                            link3.download = 'map.prj';
+                            link3.click();
+                            URL.revokeObjectURL(link3.href);
+                            
+                            alert('TIFF、World File (.tfw) 和投影文件 (.prj) 已下载！\n\n请确保三个文件名称一致（除了扩展名）\n\n注意：为保留颜色信息，文件实际为PNG格式但扩展名为.tif');
+                        }
+                    }
+                }, 'image/png');  // 使用PNG格式以保留完整颜色信息
+                
+            } catch (error) {
+                console.error('GeoTIFF生成失败:', error);
+                alert('GeoTIFF生成失败: ' + error.message);
+            }
+        });
+    </script>
+</body>
+
+</html>

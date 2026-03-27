@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCalRiverPath3.js"></script>
+    <link rel="stylesheet" href="/Public/css/1.css">
+    <style>
+        #mapDiv {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+            /* min-height: calc(100vh - 50px); */
+        }
+
+        .test {
+            position: absolute;
+            bottom: 100px;
+            z-index: 450;
+        }
+
+        #addPoint {
+            left: 50px;
+        }
+
+        #cal {
+            left: 120px;
+        }
+
+        #close {
+            left: 162px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapDiv">
+        <button class="test" id="addPoint">添加点位</button>
+        <button class="test" id="close">关闭</button>
+        <div class="infoBox">
+            <div class="confluencePointInfos" id="confluencePointInfos"></div>
+            <div class="slicedRiverInfos" id="slicedRiverInfos"></div>
+        </div>
+
+    </div>
+    <script>
+        var map = new T.Map("mapDiv")
+        var zoom = 11;
+        map.centerAndZoom(new T.LngLat(103.0253, 29.9967), zoom);
+        map.disableDoubleClickZoom(); //禁用双击地图放大
+        var overLayList = []  //marker和slicedRiver列表
+        var allRiver = []  //所有河流data列表
+        var infoList = [] //计算出的信息列表
+
+        initRiverPolyLine() //初始化底层河流线
+        getRiverData(allRiver) //初始时读取河流数据
+
+        $("#addPoint").click(function (e) {
+            e.stopPropagation(); //e不冒泡
+            map.removeEventListener("click");
+            map.addEventListener("click", MapClick());
+        })
+
+        $("#close").click(function () {
+            map.removeEventListener("click");
+            overLayList.forEach(overLay => {
+                map.removeOverLay(overLay)
+            })
+            overLayList = []
+            map.centerAndZoom(new T.LngLat(103.0253, 29.9967), zoom);
+        })
+
+        function MapClick(riverPolylineList) {
+            return function (e) {
+                infoList = []
+                var flag = 1;
+                overLayList.forEach(overLay => {
+                    map.removeOverLay(overLay)
+                })
+                overLayList = []
+                var point = [e.lnglat.lng, e.lnglat.lat]
+                getAllRivCrossPoints(point, allRiver, flag) //计算
+                setOverLays(infoList)   //设置overLay
+                // setViewPort(infoList)  //设置对象居中
+                setInfoPanel(infoList)
+
+
+            }
+        }
+
+    </script>
+</body>
+
+</html>

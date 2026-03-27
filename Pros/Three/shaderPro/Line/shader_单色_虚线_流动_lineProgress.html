@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/f3d.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+
+</head>
+
+<body>
+    <script>
+        let terrainMesh = null;
+        let heightScale = 0.5;
+        let smoothness = 3;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // 创建相机
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(1, 50, 3);
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 添加光源
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        // 添加控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const points = [
+            new THREE.Vector3(-10, 0, 0),
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(5, 0, 0),
+            new THREE.Vector3(10, 0, 0),
+            new THREE.Vector3(20, 0, 0)
+        ];
+        const line_geometry = new THREE.BufferGeometry().setFromPoints(points);
+        setupLineProgress(line_geometry, points)
+
+        const vs = `
+            attribute float lineProgress;
+            varying float vProgress;
+            varying vec2 vUv;
+            
+            void main() {
+                vProgress = lineProgress;
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        //动态渐变色
+        const fs1 = `
+            varying float vProgress;
+            varying vec2 vUv;
+            uniform float time;
+            
+            void main() {
+                // 创建动态进度效果
+                float animatedProgress = sin(vProgress * 6.28318 + time * 2.0) * 0.5 + 0.5;
+                
+                // 根据动画进度显示颜色
+                vec3 color = mix(
+                    vec3(1.0, 0.0, 0.0), // 红色
+                    vec3(0.0, 0.0, 1.0), // 蓝色
+                    animatedProgress
+                );
+                
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        //静态虚线
+        const fs2 = `
+            varying float vProgress;
+            varying vec2 vUv;
+            uniform float time;
+            
+            void main() {
+                // 虚线参数
+                float dashSize = 0.01;        // 虚线片段长度
+                float gapSize = 0.01;         // 间隙长度
+                float totalLength = dashSize + gapSize;
+                
+                // 计算虚线模式
+                float pattern = mod(vProgress, totalLength);
+                
+                if(pattern < dashSize) {
+                    // 显示虚线片段
+                    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+                } else {
+                    discard; // 或者使用透明: gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+                }
+            }
+        `;
+
+        //动态虚线
+        const fs3 = `
+            varying float vProgress;
+            varying vec2 vUv;
+            uniform float time;
+            
+            void main() {
+                // 虚线参数
+                float dashSize = 0.4;
+                float gapSize = 0.1;
+                float totalLength = dashSize + gapSize;
+                
+                // 添加动画效果 - 虚线移动
+                float animatedProgress = vProgress + time * 0.5;
+                float pattern = mod(animatedProgress, totalLength);
+                
+                if(pattern < dashSize) {
+                    // 渐变色虚线
+                    float intensity = pattern / dashSize; // 0到1的渐变
+                    gl_FragColor = vec4(1.0, intensity, 0.0, 1.0);
+                } else {
+                    discard;
+                }
+            }
+        `;
+        const dash_line_flow_material = new THREE.ShaderMaterial({
+            vertexShader: vs,
+            fragmentShader: fs3,
+            uniforms: {
+                time: { value: 0.0 }
+            },
+            transparent: true,
+        });
+
+        const line = new THREE.Line(line_geometry, dash_line_flow_material)
+        scene.add(line)
+
+
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            dash_line_flow_material.uniforms.time.value += 0.001;
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+
+    </script>
+</body>
+
+</html>

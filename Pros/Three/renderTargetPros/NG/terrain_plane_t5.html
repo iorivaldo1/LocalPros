@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="../deepSeekTest.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+
+    <script type="module">
+        //主场景
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(0, 10, 0);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        //地形数据
+        const file = '/Public/imgs/dem/terrain2.tif';
+        const res = await fetch(file)
+        const arrayBuffer = await res.arrayBuffer();
+        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer)
+        const image = await tiff.getImage()
+        const rasters = await image.readRasters()
+        const width = image.getWidth()
+        const height = image.getHeight()
+
+        //renderTarget
+        const rtWidth = window.innerWidth;
+        const rtHeight = window.innerHeight;
+        const renderTarget = new THREE.WebGLRenderTarget(rtWidth, rtHeight);
+        const rtCamera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
+        rtCamera.position.set(0, 3.5, 0);
+        const rtControls = new THREE.OrbitControls(rtCamera, renderer.domElement);
+        rtControls.enableDamping = true;
+        const rtScene = new THREE.Scene();
+        
+
+        {
+            const color = 0xFF00FF;
+            const intensity = 3;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(- 1, 2, 4);
+            rtScene.add(light);
+        }
+        const geometry2 = new THREE.CircleGeometry(0.5, 32)
+
+        const vs1 = `
+            varying vec2 vUv;
+            varying vec3 vWorldPosition;
+            void main() {
+                vUv = uv;
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vWorldPosition = worldPosition.xyz;
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
+            }
+        `
+        const fs1 = `
+            uniform vec3 circleCenter;
+            uniform float circleRadius;
+            varying vec3 vWorldPosition;
+            void main() {
+                float dist = length(vWorldPosition.xz - circleCenter.xz)/circleRadius;
+                if(dist > 0.1 && dist < 0.2 ){
+                    gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
+                } else {
+                    discard;
+                }
+            }
+        `
+
+        const fs2 = `
+            uniform vec3 circleCenter;
+            uniform float circleRadius;
+            varying vec3 vWorldPosition;
+            void main() {
+                gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
+            }
+        `
+        const material1= new THREE.ShaderMaterial({
+            vertexShader: vs1,
+            fragmentShader: fs2,
+            side: THREE.DoubleSide,
+            uniforms: {
+                circleCenter: { value: new THREE.Vector3(0, 0, 0) },
+                circleRadius: { value: 0.5 }
+            },
+            transparent: true
+        })
+        const circle_mesh = new THREE.Mesh(geometry2, material1);
+        circle_mesh.position.set(0, 0, 0)
+        circle_mesh.rotateX(- Math.PI / 2)
+        rtScene.add(circle_mesh)
+        //renderTarget
+
+        //主场景元素
+        const elevationData = new Float32Array(rasters[0])
+        const geometry = new THREE.PlaneGeometry(5, 5 * height / width, width - 1, height - 1)
+        let maxElevation = -Infinity
+        for (let i = 0; i < elevationData.length; i++) {
+            if (elevationData[i] > maxElevation) {
+                maxElevation = elevationData[i]
+            }
+        }
+        let minElevation = Infinity
+        for (let i = 0; i < elevationData.length; i++) {
+            const num = elevationData[i]
+            if (num !== 0 && num < minElevation) {
+                minElevation = num
+            }
+        }
+        const positions = geometry.attributes.position.array
+        for (let i = 0; i < elevationData.length; i++) {
+            if (maxElevation == minElevation) {
+                positions[i * 3 + 2] = 0
+            }
+            else {
+                positions[i * 3 + 2] = (elevationData[i] - minElevation) / (maxElevation - minElevation)
+            }
+        }
+        geometry.attributes.position.needsUpdate = true
+        geometry.computeVertexNormals()
+        const material2 = new THREE.MeshPhongMaterial({
+            map: renderTarget.texture,
+        });
+        const mesh1 = new THREE.Mesh(geometry, material2);
+        mesh1.rotateX(- Math.PI / 2)
+        scene.add(mesh1);
+
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+        }
+        function onMouseClick() {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(mesh1);
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                circle_mesh.position.set(point.x, 0, point.z);
+                console.log(point)
+            }
+        }
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('click', onMouseClick);
+
+        //-------------------------------------
+
+        function animate() {
+            renderer.setRenderTarget(renderTarget);
+            renderer.render(rtScene, rtCamera);
+            renderer.setRenderTarget(null);
+
+            controls.update();
+            rtControls.update();
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        animate();
+
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            rtCamera.updateProjectionMatrix()
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

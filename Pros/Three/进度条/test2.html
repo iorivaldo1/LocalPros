@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Texture Loader with Progress</title>
+    <script src="/Public/js/geoTools.js"></script>
+    <style>
+
+    </style>
+</head>
+
+<body>
+    <script>
+        var minX = 103
+        var minY = 30.00
+        var maxX = 103.04
+        var maxY = 30.04
+        var pro_p1 = LatLon2XY(minX, minY)
+        var pro_p2 = LatLon2XY(maxX, maxY)
+        var dom_width = Math.round(Math.abs(pro_p2.y - pro_p1.y))
+        var dom_height = Math.round(Math.abs(pro_p2.x - pro_p1.x))
+        var imageURL =
+            'http://localhost:8080/geoserver/WMS_DOM/wms?' +
+            'Request=GetMap' +
+            '&Service=WMS' +
+            '&Version=1.1.0' +
+            '&LAYERS=WMS_DOM%3Aya' +
+            '&STYLE=' +
+            '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+            '&WIDTH=' + dom_width +
+            '&HEIGHT=' + dom_height +
+            '&SRS=EPSG%3A4326' +
+            '&FORMAT=image%2Fpng' +
+            '&TRANSPARENT=true'
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', imageURL, true);
+        xhr.addEventListener('progress', function(event) {
+            console.log(event)
+        })
+
+        xhr.send()
+    </script>
+</body>
+
+</html>

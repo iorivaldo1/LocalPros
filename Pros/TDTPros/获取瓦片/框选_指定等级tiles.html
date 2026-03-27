@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Test</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #canvas1 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+            /* width:500px; */
+            /* height:500px */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <button id="getDem">T</button>
+
+    <script>
+        var map = new T.Map('map');
+        map.centerAndZoom(new T.LngLat(103, 30), 14);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+
+        async function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+
+            const bbox = await getBbox()
+            const zoom = map.getZoom();
+            const tileSize = 256;
+
+            var minX = bbox.getSouthWest().lng
+            var minY = bbox.getSouthWest().lat
+            var maxX = bbox.getNorthEast().lng
+            var maxY = bbox.getNorthEast().lat
+
+            const nw = lngLatToTile(minX, maxY, zoom);  // 西北角
+            const ne = lngLatToTile(maxX, maxY, zoom);  // 东北角
+            const sw = lngLatToTile(minX, minY, zoom);  // 西南角
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);  // 注意：行号从上到下增加
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({
+                        url: getTileWMTSUrlCIA(col, row, zoom),
+                        col: col,
+                        row: row,
+                    });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            const canvas1 = $('#canvas1')[0];
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            const images = await getAllImages(tiles)
+            images.forEach((img, index) => {
+                const tile = tiles[index];
+                const x = (tile.col - bounds.minCol) * tileSize;
+                const y = (tile.row - bounds.minRow) * tileSize;
+                ctx1.drawImage(img, x, y, tileSize, tileSize);
+            });
+        }
+    </script>
+</body>
+
+</html>

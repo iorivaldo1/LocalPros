@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        #map {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+        }
+
+        #btn1 {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="btn1">T</button>
+    <script>
+        $('#btn1').on('click', HD1)
+        async function loadDEMFromGeoServer(demData) {
+            const arrayBuffer = await demData.arrayBuffer();
+            // console.log(arrayBuffer)
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const elevationData = new Float32Array(rasters[0]);//DEM像素深度(32位)
+
+            console.log(elevationData)
+        }
+
+        function HD1() {
+            var minX = 103.065470
+            var minY = 30.011560
+            var maxX = 103.066651
+            var maxY = 30.012987
+
+            const wcsBaseUrl = 'http://localhost:8080/geoserver/wcs'; 
+            const wcsURL = wcsBaseUrl +
+                '?service=WCS' +
+                '&version=2.0.1' +
+                '&request=GetCoverage' +
+                '&coverageId=WMS_DEM:DEM_YA_COP' +  
+                '&format=image/tiff' +
+                '&subset=Long(' + minX + ',' + maxX + ')' +
+                '&subset=Lat(' + minY + ',' + maxY + ')' +
+                '&subsettingCrs=EPSG:4326';
+
+            fetch(wcsURL).then(res=>{
+                loadDEMFromGeoServer(res)
+            })
+        }
+
+
+    </script>
+</body>
+
+</html>

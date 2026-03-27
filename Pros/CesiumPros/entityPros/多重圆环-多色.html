@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            // terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        viewer.scene.globe.show = false;
+
+        const myPrimitive2 = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: new Cesium.CircleGeometry({
+                    center: Cesium.Cartesian3.fromDegrees(114, 25, 1000),
+                    radius: 100.0,
+                    height: 1000,
+                })
+            }),
+            appearance: new Cesium.MaterialAppearance({
+                material: new Cesium.Material({
+                    translucent: false,
+                    fabric: {
+                        type: 'test',
+                        uniforms: {
+                            color1: new Cesium.Color(1, 0, 0, 1),
+                            color2: new Cesium.Color(0, 1, 0, 1),
+                            color3: new Cesium.Color(0, 0, 1, 1),
+                            color4: new Cesium.Color(1, 1, 0, 1),
+                            color5: new Cesium.Color(1, 1, 1, 1)
+                        },
+                        source: shaderStaticRingMultiColor
+                    }
+                })
+            })
+        })
+        viewer.scene.primitives.add(myPrimitive2)
+
+        const myPrimitive3 = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: new Cesium.CircleGeometry({
+                    center: Cesium.Cartesian3.fromDegrees(114.003, 25, 1000),
+                    radius: 100.0,
+                    height: 1000,
+                })
+            }),
+            appearance: new Cesium.MaterialAppearance({
+                material: new Cesium.Material({
+                    translucent: false,
+                    fabric: {
+                        type: 'test',
+                        uniforms: {
+                            color1: new Cesium.Color(1, 0, 0),
+                            color2: new Cesium.Color(0, 1, 0, 1),
+                            color3: new Cesium.Color(0, 0, 1, 1),
+                            color4: new Cesium.Color(1, 1, 0, 1),
+                            color5: new Cesium.Color(1, 1, 1, 1)
+                        },
+                        source: shaderStaticRingMultiColorSmoothCTO
+                    }
+                })
+            })
+        })
+        viewer.scene.primitives.add(myPrimitive3)
+
+        const myPrimitive4 = new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+                geometry: new Cesium.CircleGeometry({
+                    center: Cesium.Cartesian3.fromDegrees(113.997, 25, 1000),
+                    radius: 100.0,
+                    height: 1000,
+                })
+            }),
+            appearance: new Cesium.MaterialAppearance({
+                material: new Cesium.Material({
+                    translucent: false,
+                    fabric: {
+                        type: 'test',
+                        uniforms: {
+                            color1: new Cesium.Color(1, 0, 0),
+                            color2: new Cesium.Color(0, 1, 0, 1),
+                            color3: new Cesium.Color(0, 0, 1, 1),
+                            color4: new Cesium.Color(1, 1, 0, 1),
+                            color5: new Cesium.Color(1, 1, 1, 1)
+                        },
+                        source: shaderStaticRingMultiColorSmoothOTC
+                    }
+                })
+            })
+        })
+        viewer.scene.primitives.add(myPrimitive4)
+
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(114, 25, 2000),
+            duration: 0
+        })
+
+    </script>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Test</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <!-- <script src="/Public/js/three_utills.js"></script> -->
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+
+        #canvas1 {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            z-index: 450;
+            /* width:500px; */
+            /* height:500px */
+        }
+
+        #canvas2 {
+            position: absolute;
+            top: 50px;
+            right: 50px;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <canvas id="canvas1"></canvas>
+    <canvas id="canvas2"></canvas>
+    <button id="getDem">T</button>
+
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(103, 30), 18);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, { showLabel: false });
+
+        $('#getDem').on('click', HD1)
+
+        async function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+
+            const bbox = await getBbox()
+
+            // const zoom = map.getZoom();
+            //zoom不能用 map.getZoom() 获取的值
+            const zoom = 15;
+
+            const tileSize = 256;
+
+            var minX = bbox.getSouthWest().lng
+            var minY = bbox.getSouthWest().lat
+            var maxX = bbox.getNorthEast().lng
+            var maxY = bbox.getNorthEast().lat
+
+            const nw = lngLatToTile(minX, maxY, zoom);  // 西北角
+            const ne = lngLatToTile(maxX, maxY, zoom);  // 东北角
+            const sw = lngLatToTile(minX, minY, zoom);  // 西南角
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);  // 注意：行号从上到下增加
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({
+                        url: getTileWMTSUrlIMG(col, row, zoom),
+                        col: col,
+                        row: row,
+                    });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            //ca1
+            // const canvas1 = $('#canvas1')[0];
+            const canvas1 = document.createElement('canvas')
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            //ca2
+            const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom);
+            //计算最后一个瓦片右下角坐标,+1保证为右下角(否则为最后一个瓦片的左上角坐标)
+            const [lastTile_se_x, lastTile_se_y] = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+            //计算范围宽高
+            const geoWidth = lastTile_se_x - firstTile_nw_x;
+            const geoHeight = lastTile_se_y - firstTile_nw_y;
+            //计算像素比例
+            const pixelsPerDegreeX = canvasWidth / geoWidth;
+            const pixelsPerDegreeY = canvasHeight / geoHeight;
+            //计算选择框像素尺寸
+            const selectionPixelWidth = (maxX - minX) * pixelsPerDegreeX;
+            const selectionPixelHeight = (minY - maxY) * pixelsPerDegreeY;
+
+            //渲染并显示canvas
+            const canvas2 = $('#canvas2')[0];
+            canvas2.width = Math.ceil(selectionPixelWidth);
+            canvas2.height = Math.ceil(selectionPixelHeight);
+            const ctx2 = canvas2.getContext('2d');
+
+            // 计算偏移量
+            const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX;
+            const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY;
+
+            const images = await getAllImages(tiles)
+            images.forEach((img, index) => {
+                const tile = tiles[index];
+                const x = (tile.col - bounds.minCol) * tileSize;
+                const y = (tile.row - bounds.minRow) * tileSize;
+                ctx1.drawImage(img, x, y, tileSize, tileSize);
+            });
+
+
+            const imageData = ctx1.getImageData(
+                Math.floor(offset_x),
+                Math.floor(offset_y),
+                canvas2.width,
+                canvas2.height
+            );
+            ctx2.putImageData(imageData, 0, 0);
+        }
+
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8)
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`
+            const wmtsUrl =
+                baseUrl +
+                'REQUEST=GetTile' +
+                '&SERVICE=WMTS' +
+                '&VERSION=1.0.0' +
+                '&LAYER=img' +
+                '&STYLE=default' +
+                '&TILEMATRIXSET=w' +
+                '&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+                '&TILECOL=' + tileCol +
+                '&TILEROW=' + tileRow +
+                '&TILEMATRIX=' + zoom
+
+            return wmtsUrl
+        }
+
+        function getBbox() {
+            return new Promise((resolve, reject) => {
+                const handler = (e) => {
+                    const bbox = e.currentBounds;
+                    geo_bbox = bbox;
+                    recTool.removeEventListener('draw', handler);
+                    resolve(bbox);
+                };
+                recTool.addEventListener('draw', handler);
+            });
+        }
+
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360;
+            const y = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
+                1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2;
+            const tileCount = Math.pow(2, zoom);
+            const tileCol = Math.floor(x * tileCount);
+            const tileRow = Math.floor(y * tileCount);
+
+            return [tileCol, tileRow];
+        }
+
+        function tileToLngLat(tileCol, tileRow, zoom) {
+            const n = Math.pow(2, zoom);
+            const lng = tileCol / n * 360 - 180;
+            const latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * tileRow / n)));
+            const lat = latRad * 180 / Math.PI;
+
+            return [lng, lat];
+        }
+
+        function calculateBounds(tiles) {
+            const cols = tiles.map(t => t.col);
+            const rows = tiles.map(t => t.row);
+
+            return {
+                minCol: Math.min(...cols),
+                maxCol: Math.max(...cols),
+                minRow: Math.min(...rows),
+                maxRow: Math.max(...rows)
+            };
+        }
+        async function getAllImages(tiles) {
+            const loadPromises = tiles.map(tile =>
+                loadImage(tile.url).catch(error => {
+                    console.error(`加载瓦片失败: ${tile.url}`, error);
+                    return null;
+                })
+            );
+            const images = await Promise.all(loadPromises);
+
+            return images;
+        }
+
+        function loadImage(url, timeout = 50000) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+
+                const timer = setTimeout(() => {
+                    reject(new Error(`图片加载超时: ${url}`));
+                }, timeout);
+
+                img.onload = () => {
+                    clearTimeout(timer);
+                    resolve(img);
+                };
+
+                img.onerror = (error) => {
+                    clearTimeout(timer);
+                    reject(error);
+                };
+
+                img.src = url;
+            });
+        }
+
+    </script>
+</body>
+
+</html>

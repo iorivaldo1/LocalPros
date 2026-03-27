@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/FluidSimulation_1.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">流体模拟 - 点击添加水波</div>
+    
+    <script type="module">
+        // 初始化 Three.js 场景
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(3,5,3)
+        camera.lookAt(0,0,0)
+        const renderer = new THREE.WebGLRenderer();
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x1a1a2e);
+        document.body.appendChild(renderer.domElement);
+
+        // 创建流体模拟实例
+        const fluidSim = new FluidSimulation(renderer, 1024, 1024);
+        
+        // 创建可视化平面
+        const file = '/Public/imgs/dem/terrain2.tif';
+        const res = await fetch(file)
+        const arrayBuffer = await res.arrayBuffer();
+        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer)
+        const image = await tiff.getImage()
+        const rasters = await image.readRasters()
+        const width = image.getWidth()
+        const height = image.getHeight()
+        const elevationData = new Float32Array(rasters[0])
+        const geometry = new THREE.PlaneGeometry(5, 5 * height / width, width - 1, height - 1)
+        let maxElevation = -Infinity
+        for (let i = 0; i < elevationData.length; i++) {
+            if (elevationData[i] > maxElevation) {
+                maxElevation = elevationData[i]
+            }
+        }
+        let minElevation = Infinity
+        for (let i = 0; i < elevationData.length; i++) {
+            const num = elevationData[i]
+            if (num !== 0 && num < minElevation) {
+                minElevation = num
+            }
+        }
+        const positions = geometry.attributes.position.array
+        for (let i = 0; i < elevationData.length; i++) {
+            if (maxElevation == minElevation) {
+                positions[i * 3 + 2] = 0
+            }
+            else {
+                positions[i * 3 + 2] = (elevationData[i] - minElevation) / (maxElevation - minElevation)
+            }
+        }
+        geometry.attributes.position.needsUpdate = true
+        geometry.computeVertexNormals()
+
+                // const planeGeometry = new THREE.PlaneGeometry(4, 4);
+        const planeMaterial = new THREE.MeshBasicMaterial({
+            map: fluidSim.getHeightTexture(),
+            side: THREE.DoubleSide
+        });
+        const waterPlane = new THREE.Mesh(geometry, planeMaterial);
+        waterPlane.rotateX(- Math.PI/2);
+        scene.add(waterPlane);
+        
+
+
+        // 鼠标交互
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+        
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+        }
+        
+        function onMouseClick() {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(waterPlane);
+            
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                // 将世界坐标转换为UV坐标
+                const uvX = (point.x + 2) / 4;
+                const uvY = (point.y + 2) / 4;
+                
+                fluidSim.addDisturbance(uvX, uvY, 0.005, 1.5);
+            }
+        }
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('click', onMouseClick);
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // 更新流体模拟
+            fluidSim.update(0.01);
+            
+            // 更新水面材质纹理
+            // planeMaterial.map = fluidSim.getHeightTexture();
+            // planeMaterial.needsUpdate = true;
+            
+            // 轻微旋转水面以便观察效果
+            // waterPlane.rotation.x = Math.sin(Date.now() * 0.001) * 0.1;
+            // waterPlane.rotation.y = Math.cos(Date.now() * 0.001) * 0.1;
+            
+            renderer.render(scene, camera);
+        }
+
+        // 启动动画
+        animate();
+
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

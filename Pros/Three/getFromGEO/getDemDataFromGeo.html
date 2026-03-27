@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/three_shaders.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        #map {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+        }
+
+        #btn1 {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 200x;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="btn1">T</button>
+    <script>
+        $('#btn1').on('click', HD1)
+        async function loadDEMFromGeoServer(demData) {
+            const arrayBuffer = await demData.arrayBuffer();
+            // console.log(arrayBuffer)
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const elevationData = new Float32Array(rasters[0]);//DEM像素深度(32位)
+
+            console.log(elevationData)
+        }
+        function HD1() {
+            var minX = 103.065470
+            var minY = 30.011560
+            var maxX = 103.066651
+            var maxY = 30.012987
+            var pro_p1 = LatLon2XY(minX, minY)
+            var pro_p2 = LatLon2XY(maxX, maxY)
+            var dem_width = Math.floor((pro_p2.y - pro_p1.y) / 12.5)
+            var dem_height = Math.floor((pro_p2.x - pro_p1.x) / 12.5)
+            var url = 'http://localhost:8080/geoserver/WMS_DEM/wms?'
+            var demURL =
+                url +
+                'Request=GetMap' +
+                '&Service=WMS' +
+                '&Version=1.1.0' +
+                '&LAYERS=WMTS_DEM%3ADEM_YA_COP' +
+                '&STYLE=' +
+                '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+                '&WIDTH=' + dem_width +
+                '&HEIGHT=' + dem_height +
+                '&SRS=EPSG%3A4326' +
+                '&FORMAT=image%2Ftiff' +
+                '&TRANSPARENT=true'
+            fetch(demURL).then(res => {
+                loadDEMFromGeoServer(res)
+            })
+
+            var _url_capabilities = url +
+                'Request=GetCapabilities' +
+                '&Service=WMS' +
+                '&Version=1.1.0';
+            $.get(_url_capabilities).then(res => {
+                console.log(res)
+            })
+        }
+    </script>
+</body>
+
+</html>

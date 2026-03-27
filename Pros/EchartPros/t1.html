@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+
+<head>
+    <script src="/Public/js/echarts.min.js"></script>
+    <script src="/Public/js/echarts-liquidfill.min.js"></script>
+
+</head>
+
+<body>
+    <div id="t1" style="width:500px;height: 500px;"></div>
+    <script>
+        var chartDom = document.getElementById("t1");
+        var myChart = echarts.init(chartDom);
+        
+            const option = {
+                title: {
+                    left: 'center'
+                },
+                series: [
+                    {
+                        name: '自定义盒子',
+                        type: 'liquidFill',
+                        phase: 0.5,
+                        amplitude: 40,
+                        data: [
+                            {
+                                value: 0.5,
+                                itemStyle: {
+                                    color: '#28b5be66'
+                                }
+                            },
+                            {
+                                value: 0.5,
+                                itemStyle: {
+                                    color: '#28b5be66'
+                                }
+                            },
+                            {
+                                value: 0.5,
+                                itemStyle: {
+                                    color: '#28b5be66'
+                                }
+                            }
+                        ],
+
+                        shape: 'circle',
+                        radius: '95%',
+                        // 波浪颜色
+                        itemStyle: {
+                            shadowBlur: 1
+                        },
+                        backgroundStyle: {
+                            borderWidth: 15,
+                            borderColor: '#2a496c'
+                        },
+
+                        outline: {
+                            show: false
+                        },
+                        // 水波图标签配置
+                        label: {
+                            show: false,
+                            align: 'center',
+                            distance: 50,
+                            color: '#05FCF6',
+                            fontSize: 32,
+                            insideColor: 'red'
+                        }
+                    }
+                ]
+            };
+
+
+        myChart.setOption(option);
+    </script>
+</body>

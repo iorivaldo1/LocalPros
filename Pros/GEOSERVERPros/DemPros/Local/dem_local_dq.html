@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <style>
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <script>
+        var tileSize = 256;
+        function calculatePixelInTileCorrected(lon, lat, zoom, tileMatrixSet) {
+            const tileSize = 256;
+            // 1. 将经纬度转换为Web墨卡托坐标
+            function lon2mercX(lon) {
+                return lon * 20037508.34 / 180;
+            }
+            function lat2mercY(lat) {
+                const y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
+                return y * 20037508.34 / 180;
+            }
+            const mercX = lon2mercX(lon);
+            const mercY = lat2mercY(lat);
+            // 2. 计算初始参数
+            const earthCircumference = 2 * Math.PI * 6378137;
+            const initialResolution = earthCircumference / tileSize;
+            const originShift = earthCircumference / 2;
+            const resolution = initialResolution / Math.pow(2, zoom);
+            // 3. 计算像素坐标（全局像素坐标系，原点在左上角）
+            const pixelX = (mercX + originShift) / resolution;
+            const pixelY = (originShift - mercY) / resolution; // 关键修正：Y轴翻转
+            // 4. 计算瓦片坐标
+            const tileX = Math.floor(pixelX / tileSize);
+            const tileY = Math.floor(pixelY / tileSize);
+            // 5. 计算瓦片内的像素坐标（I, J）
+            const i = Math.floor(pixelX % tileSize); // X方向正常
+            const j = Math.floor(tileSize - (pixelY % tileSize) - 1); // 关键修正：Y方向翻转
+
+            return {
+                tileX: tileX,
+                tileY: tileY,
+                i: i,
+                j: j,
+                globalPixelX: pixelX,
+                globalPixelY: pixelY,
+                pixelInTileX: pixelX % tileSize,
+                pixelInTileY: pixelY % tileSize
+            };
+        }
+        var map = new T.Map('map', { maxZoom: 18 });
+        map.centerAndZoom(new T.LngLat(99.40, 30.3), 15);
+
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        map.addEventListener('click', function (e) {
+            var lnglat = e.lnglat;
+            var zoom = map.getZoom();
+            var res = calculatePixelInTileCorrected(lnglat.lng, lnglat.lat, zoom, 'EPSG:900913')
+            var wmtsUrl = 'http://localhost:8080/geoserver/WMTS_DEM/gwc/service/wmts'; // WMTS服务地址
+            var url = wmtsUrl + '?' +
+                'VERSION=1.0.0' +
+                '&LAYER=WMTS_DEM%3Adem_dq_4326' +
+                '&STYLE=' +
+                '&TILEMATRIX=EPSG:900913:' + zoom +
+                '&TILEMATRIXSET=EPSG:900913' +
+                '&SERVICE=WMTS' +
+                '&FORMAT=image/png' +
+                '&REQUEST=GetFeatureInfo' +
+                '&INFOFORMAT=application/json' +
+                '&TileCol=' + res.tileX +
+                '&TileRow=' + res.tileY +
+                '&I=' + Math.floor(res.pixelInTileX) +
+                '&J=' + Math.floor(res.pixelInTileY)
+
+            $.get(url).then(res => {
+                if (res.features.length > 0) {
+                    console.log(res.features[0].properties)
+                }
+
+            })
+        });
+
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        .cesium-widget-credits {
+            display: none !important;
+            visibility: hide !important;
+        }
+
+        .cesium-viewer-toolbar {
+            display: none !important;
+            visibility: hide !important;
+        }
+
+        .middleTop {
+            width: 300px;
+            height: 30px;
+            position: fixed;
+            top: 10px;
+            left: 20px;
+            text-align: center;
+            background: red;
+            opacity: 0.6;
+        }
+
+        button {
+            background: gray;
+            border: 1px solid #00d0ffb8;
+            color: white;
+            padding: 7px 9px;
+            border-radius: 2px;
+            margin: 3px;
+            cursor: pointer
+        }
+
+        .tip-item {
+            margin: 2px 0px;
+            padding: 5px 1px;
+        }
+    </style>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <!-- <script src="https://cesium.com/downloads/cesiumjs/releases/1.108/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.108/Build/Cesium/Widgets/widgets.css" rel="stylesheet"> -->
+</head>
+
+<body>
+    <div id="cesiumContainer" style="width:100%;height:100%;">
+    </div>
+    <div class="middleTop" id="demo2">
+        <div class="map-tool">
+            <button id="addTetrahedron" class="newBtn">添加倒立四棱锥</button>
+            <button id="removeTetrahedron" class="newBtn">移除一个倒立四棱锥</button>
+        </div>
+    </div>
+    <script>
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+        const viewer = new Cesium.Viewer('cesiumContainer', { // Initialize the Cesium Viewer in the HTML element with the `cesiumContainer` ID.
+            baseLayerPicker: false,
+            //shadows: true,
+            shouldAnimate: true,
+            infoBox: false,
+            animation: false,//动画控制不显示
+            timeline: false,//时间线不显示
+            fullscreenButton: false, //全屏按钮不显示
+            terrainProvider: Cesium.createWorldTerrain({
+                requestWaterMask: true, // 水特效
+                requestVertexNormals: true // 地形光
+            }),
+            selectionIndicator: false, // By jing_zhong 2022.9.21 移除Cesium自带的绿色聚焦瞄准框
+            //imageryProvider: new Cesium.ArcGisMapServerImageryProvider({
+            //  url: 'http://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
+            //}),
+        });
+        viewer._cesiumWidget._creditContainer.style.display = "none";//去除版权信息
+        //viewer.scene.globe.depthTestAgainstTerrain = true;
+        let silhouette = null, skylineAnayStages = null;//天际线分析工具
+        // 添加四棱锥
+        document.getElementById("addTetrahedron").addEventListener("click", function (e) {
+            onLineTetra();// By jing_zhong 2023.8.31
+        });
+        // 移除四棱锥
+        document.getElementById("removeTetrahedron").addEventListener("click", function (e) {
+            removeSinglePrimitive();// By jing_zhong 2023.8.31
+        });
+
+        let addedPrimitives = [];
+        function onLineTetra() // By jing_zhong 2023.8.31 源自 Mars3d源码启发 和 网上资料
+        {
+            function TetrahedronPrimitive(options) {
+                this.show = true;
+                this._command = undefined;
+                this._enuMatrix = undefined;
+                this._scaleMatrix = undefined;
+                this._localPosition = options.position;
+                this._createCommand = createCommand;
+                this._angle = 0;
+                this._distance = Cesium.defaultValue(options.distance, 1);
+                this._setInterval = undefined;
+                this._viewer = viewer;
+                this._speed = Cesium.defaultValue(options.speed, 1.0);
+                this._color = Cesium.defaultValue(options.color, new Cesium.Color(1.0, 0.0, 0.0, 0.8));
+                this._scale = Cesium.defaultValue(options.scale, new Cesium.Cartesian3(10, 10, 15));
+                this._texture = undefined;
+                // this._imageUrl= Cesium.buildModuleUrl('./fence.png');
+                this._modelMatrix = computeModelMatrix(this);
+                this._height = computeHeight(this);
+                //debugger
+                // createTexture(this);
+            }
+            TetrahedronPrimitive.prototype.update = function (frameState) {
+                if (!this.show) {
+                    return;
+                }
+                if (!Cesium.defined(this._command)) {
+                    this._command = this._createCommand(frameState.context, this);
+                    this._command.pickId = 'v_pickColor';
+                }
+                if (Cesium.defined(this._command)) {
+                    frameState.commandList.push(this._command);
+                }
+            }
+            TetrahedronPrimitive.prototype.isDestroyed = function () {
+                return false;
+            }
+            TetrahedronPrimitive.prototype.destroy = function () {
+                if (Cesium.defined(this._command)) {
+                    this._command.shaderProgram = this._command.shaderProgram && this._command.shaderProgram.destroy();
+                }
+                return Cesium.destroyObject(this);
+            }
+
+            //开启动画
+            TetrahedronPrimitive.prototype.startAnimate = function () {
+                let that = this;
+                this._setInterval = setInterval(animateFunc, 5);
+                function animateFunc() {
+                    that._angle = that._angle + 0.01;
+                    if (Math.sin(that._angle) < 0) {
+                        that._height = 0.01;
+                    }
+                    else {
+                        that._height = -0.01;
+                    }
+
+                    let translation = new Cesium.Cartesian3(0, 0, that._height);
+                    Cesium.Matrix4.multiplyByTranslation(that._modelMatrix, translation, that._modelMatrix);
+                    let rotationZ = Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromRotationZ(Cesium.Math.toRadians(that._speed)));
+                    Cesium.Matrix4.multiply(that._modelMatrix, rotationZ, that._modelMatrix);
+                }
+            }
+            //关闭动画
+            TetrahedronPrimitive.prototype.closeAnimate = function () {
+                clearInterval(this._setInterval);
+            }
+            //创建command
+            function createCommand(context, tetrahedronPrimitive) {
+                var translucent = false;
+                var closed = true;
+                var vs = creaateVertexShader();
+                var fs = createFragmentShader();
+                // 借用一下Appearance.getDefaultRenderState
+                var rawRenderState = Cesium.Appearance.getDefaultRenderState(translucent, closed, undefined);
+                var renderState = Cesium.RenderState.fromCache(rawRenderState);
+                var vertexShaderSource = new Cesium.ShaderSource({
+                    sources: [vs]
+                });
+                var fragmentShaderSource = new Cesium.ShaderSource({
+                    sources: [fs]
+                });
+                var uniformMap = {
+                    color: function () {
+                        return tetrahedronPrimitive._color;
+                    },
+                    myImage: function () {
+                        if (Cesium.defined(tetrahedronPrimitive._texture)) {
+                            return tetrahedronPrimitive._texture;
+                        } else {
+                            return tetrahedronPrimitive._viewer.scene.context.defaultTexture;
+                        }
+                    }
+                };
+                let attributeLocations = {
+                    position: 0,
+                    textureCoordinates: 1
+                };
+                var shaderProgram = Cesium.ShaderProgram.fromCache({
+                    context: context,
+                    vertexShaderSource: vertexShaderSource,
+                    fragmentShaderSource: fragmentShaderSource,
+                    attributeLocations: attributeLocations
+                });
+                return new Cesium.DrawCommand({
+                    vertexArray: createVertexArray(context),
+                    primitiveType: Cesium.PrimitiveType.TRIANGLES,
+                    renderState: renderState,
+                    shaderProgram: shaderProgram,
+                    uniformMap: uniformMap,
+                    owner: this,
+                    pass: Cesium.Pass.TRANSLUCENT,
+                    modelMatrix: tetrahedronPrimitive._modelMatrix,
+                });
+            }
+            //创建vertexArray
+            function createVertexArray(context) {
+                let attributeLocations = {
+                    position: 0,
+                    textureCoordinates: 1
+                };
+                var positionsAndIndice = cereatePositionsAndIndice();
+                var geometry = new Cesium.Geometry({
+                    attributes: {
+                        position: new Cesium.GeometryAttribute({
+                            // 使用double类型的position进行计算
+                            // componentDatatype : Cesium.ComponentDatatype.DOUBLE,
+                            componentDatatype: Cesium.ComponentDatatype.FLOAT,
+                            componentsPerAttribute: 3,
+                            values: positionsAndIndice.positions
+                        }),
+                        textureCoordinates: new Cesium.GeometryAttribute({
+                            componentDatatype: Cesium.ComponentDatatype.FLOAT,
+                            componentsPerAttribute: 2,
+                            values: positionsAndIndice.sts
+                        }),
+                    },
+                    // Workaround Internet Explorer 11.0.8 lack of TRIANGLE_FAN
+                    indices: positionsAndIndice.indices,
+                    primitiveType: Cesium.PrimitiveType.TRIANGLES,
+                    boundingSphere: Cesium.BoundingSphere.fromVertices(positionsAndIndice.positions)
+                });
+                //计算geometry的法向量
+                var geometryNormal = Cesium.GeometryPipeline.computeNormal(geometry);
+                var vertexArray = Cesium.VertexArray.fromGeometry({
+                    context: context,
+                    geometry: geometryNormal,
+                    attributeLocations: attributeLocations,
+                    bufferUsage: Cesium.BufferUsage.STATIC_DRAW,
+                });
+                return vertexArray;
+            }
+            //创建顶点数组与索引
+            function cereatePositionsAndIndice() {
+                var positions = new Float64Array(5 * 3);
+                // position 0
+                positions[0] = 0.0;
+                positions[1] = 1.0;
+                positions[2] = 0.0;
+
+                // position 1
+                positions[3] = -1.0;
+                positions[4] = 0.0;
+                positions[5] = 0.0;
+
+                // position 2
+                positions[6] = 0.0;
+                positions[7] = -1.0;
+                positions[8] = 0.0;
+
+                // position 3
+                positions[9] = 1.0;
+                positions[10] = 0.0;
+                positions[11] = 0.0;
+
+                // position 4
+                positions[12] = 0.0;
+                positions[13] = 0.0;
+                positions[14] = 1.0;
+                var indices = new Uint16Array(6 * 3);
+                // back triangle
+                indices[0] = 4;
+                indices[1] = 2;
+                indices[2] = 3;
+
+                // left triangle
+                indices[3] = 4;
+                indices[4] = 3;
+                indices[5] = 0;
+
+                // right triangle
+                indices[6] = 4;
+                indices[7] = 0;
+                indices[8] = 1;
+
+                // bottom triangle
+                indices[9] = 4;
+                indices[10] = 1;
+                indices[11] = 2;
+                // bottom triangle
+                indices[12] = 1;
+                indices[13] = 2;
+                indices[14] = 3;
+
+                // bottom triangle
+                indices[15] = 1;
+                indices[16] = 3;
+                indices[17] = 0;
+
+                // 1.3 定义纹理数组
+                var sts = new Float32Array([
+                    0.0, 0.0, 1.0, 0.0, 1.0, 1.0,
+                    0.0, 1.0, 0.5, 0.5,
+                ]);
+                return {
+                    indices: indices,
+                    positions: positions,
+                    sts: sts
+                };
+            }
+            //创建顶点着色器
+            function creaateVertexShader() {
+                var vertexShader =
+                    `
+          attribute vec3 position;
+          attribute vec3 normal;
+          attribute vec2 st;
+          attribute float batchId;
+          varying vec3 v_positionEC;
+          varying vec3 v_normalEC;
+          varying vec2 v_st;
+          varying vec4 v_pickColor;
+          void main()
+          {
+              v_positionEC = (czm_modelView * vec4(position, 1.0)).xyz;       // position in eye coordinates
+              v_normalEC = czm_normal * normal;                               // normal in eye coordinates
+              v_st = st;
+              //v_pickColor = czm_batchTable_pickColor(batchId);
+              gl_Position = czm_modelViewProjection * vec4(position, 1.0);
+          }
+          `;
+                return vertexShader;
+            }
+            //创建片源着色器
+            function createFragmentShader() {
+                var fragmentShader =
+                    `
+          varying vec3 v_positionEC;
+          varying vec3 v_normalEC;
+          varying vec2 v_st;
+          uniform vec4 color;
+          varying vec4 v_pickColor;
+          uniform sampler2D myImage;
+          void main()
+          {
+              vec3 positionToEyeEC = -v_positionEC;
+              vec3 normalEC = normalize(v_normalEC);
+          #ifdef FACE_FORWARD
+              normalEC = faceforward(normalEC, vec3(0.0, 0.0, 1.0), -normalEC);
+          #endif
+              czm_materialInput materialInput;
+              materialInput.normalEC = normalEC;
+              materialInput.positionToEyeEC = positionToEyeEC;
+              materialInput.st = v_st;
+              vec2 st = materialInput.st;
+              czm_material material = czm_getDefaultMaterial(materialInput);
+              // float dt_a11 = fract(czm_frameNumber / 100.0) * 3.14159265 * 2.0;
+              // float dt_a12 = sin(dt_a11);
+              // float vst=smoothstep(0.7, 1.0, dt_a12)+0.4;
+              // vec4 colorImage = texture2D(myImage, vec2(fract(st.s- czm_frameNumber*0.003), st.t));
+              // material.alpha =mix(0.1,1.0,clamp((1.0-st.t) * color.a,0.0,1.0)) +(1.0-sign(st.t-czm_frameNumber*0.001))*0.2*(1.0-colorImage.r)+0.4 ;
+              // material.diffuse =(1.0-colorImage.a)*vec3(1.0,0.0,0.0)+colorImage.rgb*vec3(1.0,1.0,0);
+
+              material.alpha = (mix(0.1, 1.0, clamp((1.0 - st.t) * color.a, 0.0, 1.0)) + (1.0 - sign(st.t - czm_frameNumber * 0.001)) * 0.2 + 0.4) * 0.8;
+              material.diffuse = color.rgb;
+          #ifdef FLAT
+              gl_FragColor = vec4(material.diffuse + material.emission, material.alpha);
+          #else
+              gl_FragColor = czm_phong(normalize(positionToEyeEC), material, czm_lightDirectionEC);
+          #endif
+          }
+          `;
+                return fragmentShader;
+            }
+            //创建纹理
+            function createTexture(tetrahedronPrimitive) {
+                Cesium.Resource.createIfNeeded(tetrahedronPrimitive._imageUrl).fetchImage().then(function (image) {
+                    var vTexture;
+                    var context = tetrahedronPrimitive._viewer.scene.context;
+                    if (Cesium.defined(image.internalFormat)) {
+                        vTexture = new Cesium.Texture({
+                            context: context,
+                            pixelFormat: image.internalFormat,
+                            width: image.naturalWidth,
+                            height: image.naturalHeight,
+                            source: {
+                                arrayBufferView: image.bufferView
+                            }
+                        });
+                    } else {
+                        vTexture = new Cesium.Texture({
+                            context: context,
+                            source: image
+                        });
+                    }
+                    tetrahedronPrimitive._texture = vTexture;
+                });
+            }
+            //计算矩阵
+            function computeModelMatrix(tetrahedronPrimitive) {
+                let enuMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(tetrahedronPrimitive._localPosition);
+                let scaleMatrix = Cesium.Matrix4.fromScale(tetrahedronPrimitive._scale);
+                let modelMatrix = Cesium.Matrix4.multiply(enuMatrix, scaleMatrix, new Cesium.Matrix4());
+                tetrahedronPrimitive._scaleMatrix = scaleMatrix;
+                tetrahedronPrimitive._enuMatrix = enuMatrix;
+                return modelMatrix;
+            }
+            //计算高度
+            function computeHeight(tetrahedronPrimitive) {
+                let point = Cesium.Cartesian3.fromElements(0, 0, tetrahedronPrimitive._distance, new Cesium.Cartesian3());
+                let enuPoint = Cesium.Matrix4.multiplyByPoint(tetrahedronPrimitive._enuMatrix, point, new Cesium.Cartesian3());
+                let upPositionEC = Cesium.Matrix4.multiplyByPoint(tetrahedronPrimitive._viewer.scene.camera._viewMatrix, enuPoint, new Cesium.Cartesian3());
+                let upPositionPC = Cesium.Matrix4.multiplyByPoint(tetrahedronPrimitive._viewer.scene.camera.frustum.projectionMatrix, upPositionEC, new Cesium.Cartesian3());
+                return Cesium.Cartesian3.normalize(upPositionPC, new Cesium.Cartesian3()).z;
+            }
+
+
+            // const center = Cesium.Cartesian3.fromDegrees(0.0, 0.0);
+            let positions =
+            {
+                "x": -2481464.959108353,
+                "y": 4823824.427904163,
+                "z": 3343877.308220879
+            };
+
+            let colors = [
+                new Cesium.Color(1.0, 1.0, 0.0, 1.0),
+                new Cesium.Color(1.0, 0.0, 0.0, 0.8),
+                new Cesium.Color(0.0, 1.0, 0.0, 0.8),
+                new Cesium.Color(0.0, 0.0, 1.0, 0.8),
+                new Cesium.Color(0.8, 0.8, 0x0, 0.8)
+            ];
+            for (let i = 0; i < colors.length; i++) {
+                let pt = new Cesium.Cartesian3(positions.x + i + 100, positions.y, positions.z + i * 100)
+                let primitive = new TetrahedronPrimitive({
+                    position: pt,
+                    color: colors[i]
+                })
+                viewer.scene.primitives.add(primitive);
+                primitive.startAnimate();
+                if (i === 2)
+                    viewer.flyTo(primitive);
+            }
+
+            viewer.camera.setView({
+                destination: new Cesium.Cartesian3(
+                    positions.x, positions.y, positions.z
+                ),
+                // orientation: {
+                //     heading: 6.276226863836136,
+                //     pitch: -1.331128445292896,
+                //     roll: 0.0001241421687643296
+                // }
+            });
+        }
+
+        function removeSinglePrimitive() {
+            const primitives = viewer.scene.primitives;
+            const length = primitives.length;
+            for (let i = 0; i < length; ++i) {
+                const p = primitives.get(i);
+                // p.show = !p.show;
+                if (i === length - 1)
+                    viewer.scene.primitives.remove(p);
+            }
+        }
+    </script>
+</body>
+
+</html>

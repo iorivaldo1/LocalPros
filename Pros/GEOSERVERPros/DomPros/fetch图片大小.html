@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/geoTools.js"></script>
+    <script src="/Public/js/three_utills.js"></script>
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <style>
+        #map {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+        }
+
+        #btn1 {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            width: 50px;
+            height: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="btn1">T</button>
+    <script>
+        var map = new T.Map('map', { tileSize: 512 });
+        map.centerAndZoom(new T.LngLat(102.607, 30.652), 12);
+
+
+
+
+        $('#btn1').on('click', HD1)
+        function HD1() {
+            var minX = 103
+            var minY = 30.00
+            var maxX = 103.01
+            var maxY = 30.01
+            var pro_p1 = LatLon2XY(minX, minY)
+            var pro_p2 = LatLon2XY(maxX, maxY)
+            var dom_width = Math.round(Math.abs(pro_p2.y - pro_p1.y))
+            var dom_height = Math.round(Math.abs(pro_p2.x - pro_p1.x))
+            
+
+            // console.log(dom_width, dom_height)
+
+            var picSize = calculateWMSSize(dom_width,dom_height)
+            console.log(picSize)
+            var imageURL =
+                'http://localhost:8080/geoserver/WMS_DOM/wms?' +
+                'Request=GetMap' +
+                '&Service=WMS' +
+                '&Version=1.1.0' +
+                '&LAYERS=WMS_DOM%3Aya' +
+                '&STYLE=' +
+                '&BBOX=' + minX + '%2C' + minY + '%2C' + maxX + '%2C' + maxY +
+                '&WIDTH=' + dom_width +
+                '&HEIGHT=' + dom_height +
+                '&SRS=EPSG%3A4326' +
+                '&FORMAT=image%2Fpng' +
+                '&TRANSPARENT=true'
+            async function te(data) {
+                const arrayBuffer = await data.arrayBuffer();
+            }
+            fetch(imageURL).then(res=>{
+                console.log(res)
+            })
+
+        }
+    </script>
+</body>
+
+</html>

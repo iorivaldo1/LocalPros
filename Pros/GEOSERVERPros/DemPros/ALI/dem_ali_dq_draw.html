@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>天地图加载GeoServer WMS</title>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/wmtsTools.js"></script>
+    <script src="/Public/js/echarts.min.js"></script>
+    <link rel="stylesheet" href="/Public/css/0912.css">
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="t1">T</button>
+    <div id="echart"></div>
+    <!-- 坐标查询功能开关 -->
+    <div id="coordSwitchButton">
+        <span>显示坐标</span>
+        <button class="switch">
+            <span class="switch_circle circle_left"></span>
+        </button>
+    </div>
+
+    <!-- 坐标信息显示框 -->
+    <div id="coordInfoContainer">
+        <span id="coord"></span>
+    </div>
+    <script>
+
+
+        var divCount = 100;//采样点数量
+        var tileSize = 256;
+        var lineTool;
+        var m_pl = []
+
+        var map = new T.Map('map', { maxZoom: 18 });
+        map.centerAndZoom(new T.LngLat(99.402, 30.299), 18);
+
+        regShowCoord(map);
+        var ctrl = new T.Control.MapType(
+            { position: T_ANCHOR_BOTTOM_RIGHT }
+        );
+        map.addControl(ctrl);
+
+        $.get('http://8.155.1.150:5211/getRasBox').then(res => {
+            const cns = res[0].fileWkt.split("(")[3].split(")")[0].split(",")
+            var cnList = [];
+            for (let i = 0; i < cns.length; i++) {
+                const e = parseFloat(cns[i].split(",")[0].split(" ")[0]);
+                const n = parseFloat(cns[i].split(",")[0].split(" ")[1]);
+                cnList.push([e, n])
+            }
+            var points = []
+            cnList.forEach(p => {
+                points.push(new T.LngLat(p[0], p[1]))
+            })
+            var village = new T.Polyline(points, {
+                color: "black",
+                weight: 0.5,
+                opacity: 0.6,
+                fillColor: "#4f606b",
+                fillOpacity: 0.2,
+                lineStyle: 'solid'
+            });
+            map.addOverLay(village);
+        })
+
+        $('#t1').on('click', HD1)
+
+        var chartDom = document.getElementById("echart");
+        var myChart = echarts.init(chartDom);
+        var option;
+
+        function HD1() {
+            if (m_pl.length > 0) {
+                lineTool.clear();
+                lineTool.close();
+                m_pl = []
+            }
+
+            lineTool = new T.PolylineTool(map);
+            lineTool.open();
+            lineTool.addEventListener('draw', (e) => {
+                e.currentLnglats.forEach(p => {
+                    var p_coord = [p.lng, p.lat]
+                    m_pl.push(p_coord)
+                })
+                var nps = getPLByDividePL(m_pl, divCount)[0]
+                var div_dis = getPLByDividePL(m_pl, divCount)[1]
+                var div_disList = [0]
+                for (let i = 0; i < divCount; i++) {
+                    var n_dis = (div_disList.at(-1) + div_dis)
+                    div_disList.push(n_dis)
+                }
+
+                console.log(div_disList)
+
+                async function getEleList() {
+                    const concurrency = divCount;//////////////////////
+                    const elevationList = [];
+                    const promises = nps.map(np => () => {
+                        return new Promise((resolve, reject) => {
+                            var zoom = map.getZoom();
+                            var res = calculatePixelInTileCorrected(np[0], np[1], zoom, 'EPSG:900913');
+                            var wmtsUrl = 'http://8.155.1.150:8080/geoserver/WMTS_DEM/gwc/service/wmts'; // WMTS服务地址
+                            var url = wmtsUrl + '?' +
+                                'REQUEST=GetFeatureInfo' +
+                                '&VERSION=1.0.0' +
+                                '&LAYER=WMTS_DEM%3Adem_dq_4326' +
+                                '&STYLE=' +
+                                '&TILEMATRIX=EPSG:900913:' + zoom +
+                                '&TILEMATRIXSET=EPSG:900913' +
+                                '&SERVICE=WMTS' +
+                                '&FORMAT=image/png' +
+                                '&INFOFORMAT=application/json' +
+                                '&TileCol=' + res.tileX +
+                                '&TileRow=' + res.tileY +
+                                '&I=' + Math.floor(res.pixelInTileX) +
+                                '&J=' + Math.floor(res.pixelInTileY);
+
+                            $.get(url).then(response => {
+                                if (response.features && response.features.length > 0) {
+                                    resolve(response.features[0].properties.GRAY_INDEX);
+                                } else {
+                                    resolve(null); // 或者可以根据需要处理，比如返回一个默认值
+                                }
+                            }).fail(error => {
+                                console.error('请求失败:', error);
+                                resolve(null); // 即使请求失败，我们也resolve null，避免整个Promise.all失败
+                            });
+                        });
+                    });
+                    const executePromises = async (promises, concurrency) => {
+                        const results = [];
+                        for (let i = 0; i < promises.length; i += concurrency) {
+                            const chunk = promises.slice(i, i + concurrency);
+                            const chunkResults = await Promise.all(chunk.map(p => p()));
+                            results.push(...chunkResults);
+                        }
+                        return results;
+                    };
+
+                    const results = await executePromises(promises, concurrency);
+                    // 过滤掉可能为null的结果
+                    results.forEach(result => {
+                        if (result) {
+                            elevationList.push(result);
+                        }
+                    });
+
+                    return elevationList;
+                }
+
+                getEleList().then(res => {
+                    option = {
+                        xAxis: {
+                            type: 'category',
+                            data: div_disList
+                        },
+                        yAxis: {
+                            type: 'value',
+                            min: 3500,
+                            max: 3800,
+                        },
+                        series: [
+                            {
+                                data: res,
+                                type: 'line'
+                            }
+                        ]
+                    };
+
+                    myChart.setOption(option);
+                });
+
+
+
+                lineTool.close();
+            })
+        }
+
+
+    </script>
+</body>
+
+</html>

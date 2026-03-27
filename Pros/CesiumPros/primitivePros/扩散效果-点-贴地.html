@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>QSKJ_LOCAL</title>
+    <script src="/Public/Build/Cesium/Cesium.js"></script>
+    <script src="/Public/js/ellipsoidTrailMaterialProperty.js"></script>
+    <script src="/Public/js/utilsForCesium.js"></script>
+    <script src="/Public/js/getDataApi.js"></script>
+
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/Public/Build/Cesium/Widgets/widgets.css">
+    <style>
+        .camera-info {
+            position: absolute;
+            display: flex;
+        }
+
+        .camera-info>span {
+            margin-left: 20px;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 450;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="cesiumContainer">
+        <div class="camera-info">
+            <span id="c-heading"></span>
+            <span id="c-pitch"></span>
+            <span id="c-jd"></span>
+            <span id="c-wd"></span>
+            <span id="c-height"></span>
+        </div>
+    </div>
+    <script type="module">
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0MjczNDgzMy1hYzE1LTRjNWYtODZhMS01MjZkNWRiMDc2MmUiLCJpZCI6ODIxMzAsImlhdCI6MTY0NDU0ODc0M30.LpGXXWsbQXucV5MTeC2g8BCAQWiZp612gosWcK-7ocE';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain(),
+        });
+
+        viewer.camera.changed.addEventListener(() => {
+            let heading = Cesium.Math.toDegrees(viewer.camera.heading).toFixed(2)
+            let pitch = Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(2)
+            let viewHeight = viewer.camera.positionCartographic.height.toFixed(2)
+            var positionCartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+            var longitude = Cesium.Math.toDegrees(positionCartographic.longitude).toFixed(2);
+            var latitude = Cesium.Math.toDegrees(positionCartographic.latitude).toFixed(2);
+            var height = positionCartographic.height.toFixed(2);
+            $("#c-heading").text(`heading:${heading}`)
+            $("#c-pitch").text(`pitch:${pitch}`)
+            $("#c-jd").text(`视角经度:${longitude}`)
+            $("#c-wd").text(`视角纬度:${latitude}`)
+            $("#c-height").text(`视角高度:${height}`)
+
+        })
+        getPolutionSource().then(function (data) {
+            data.poi_list.forEach(poi => {
+                viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(poi.longitude, poi.latitude),
+                    billboard: {
+                        image: setPolutionSourceBillboardImgUrl(poi.type),
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        eyeOffset: new Cesium.Cartesian3(0, 0, -2000),
+                        pixelOffset: new Cesium.Cartesian2(0, -43),
+                        scale: 0.12
+                    },
+                });
+
+                const mInstance = new Cesium.GeometryInstance({
+                    geometry: new Cesium.CircleGeometry({
+                        center: Cesium.Cartesian3.fromDegrees(poi.longitude, poi.latitude),
+                        radius: setPolutionSourceRingRadius(poi.type),
+                    })
+                });
+
+
+
+                viewer.scene.primitives.add(new Cesium.GroundPrimitive({
+                    geometryInstances: mInstance,
+                    appearance: new Cesium.MaterialAppearance({
+                        material: new Cesium.Material({
+                            translucent: false,
+                            fabric: {
+                                type: 'test',
+                                uniforms: {
+                                    color: setPolutionSourceRingColor(poi.type),
+                                    speed : setPolutionSourceRingSpeed(poi.type)
+                                },
+                                source: shaderPolution
+                            }
+                        })
+                    }),
+                }));
+            })
+
+            
+            viewer.camera.setView({
+                destination: Cesium.Cartesian3.fromDegrees(
+                    102.82, 30.13,
+                    10873.04
+                ),
+                orientation: {
+                    heading: Cesium.Math.toRadians(347.29),
+                    pitch: Cesium.Math.toRadians(-25.37),
+                    roll: 0.0,
+                },
+            });
+        })
+
+
+
+    </script>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Three_TDT</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <script src="/Public/js/three.min.js"></script>
+    <script src="/Public/js/OrbitControls.js"></script>
+    <script src="/Public/js/geotiff.js"></script>
+    <script src="/Public/js/interact.min.js"></script>
+    <script src="/Public/lib/layui-v2.9.21/layui.js"></script>
+    <link rel="stylesheet" href="/Public/lib/layui-v2.9.21/css/layui.css">
+    <link rel="icon" href="/Public/imgs/H.ico">
+    <link rel="stylesheet" href="/Public/css/0912.css">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+
+        #getDem {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            z-index: 450;
+            padding: 10px;
+        }
+
+        .viewer_3d {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 610px;
+            height: 640px;
+            background-color: rgba(136, 147, 161, 0.3);
+            font-weight: 700;
+            z-index: 450;
+            visibility: hidden;
+        }
+
+        .three_container {
+            width: 600px;
+            height: 600px;
+            margin-left: 5px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-select" id="map"></div>
+    <button class="no-select" id="getDem">T</button>
+
+    <div class="viewer_3d" id="Window_3D">
+
+        <div class="three_container" id="threeCon1"></div>
+
+
+
+
+    </div>
+
+    </div>
+
+
+
+    <script>
+        // ==================== 工具函数 ====================
+        // 根据坐标计算瓦片行列号
+        function lngLatToTile(lng, lat, zoom) {
+            const x = (lng + 180) / 360;
+            const y = (1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2;
+            const tileCount = Math.pow(2, zoom);
+            const tileCol = Math.floor(x * tileCount);
+            const tileRow = Math.floor(y * tileCount);
+            return [tileCol, tileRow];
+        }
+
+        // 根据瓦片行列号计算坐标
+        function tileToLngLat(tileCol, tileRow, zoom) {
+            const n = Math.pow(2, zoom);
+            const lng = (tileCol / n) * 360 - 180;
+            const latRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * tileRow) / n)));
+            const lat = (latRad * 180) / Math.PI;
+            return [lng, lat];
+        }
+
+        // 获取天地图影像切片(img)
+        function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 获取天地图影像注记(cia)
+        function getTileWMTSUrlCIA(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/cia_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 获取天地图矢量注记(cva)
+        function getTileWMTSUrlCVA(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/cva_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 获取天地图矢量底图(vec)
+        function getTileWMTSUrlVEC(tileCol, tileRow, zoom) {
+            const serviceNum = Math.floor(Math.random() * 8);
+            const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/vec_w/wmts?`;
+            return baseUrl + 'REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng' +
+                '&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=' + tileCol + '&TILEROW=' + tileRow + '&TILEMATRIX=' + zoom;
+        }
+
+        // 计算瓦片边界
+        function calculateBounds(tiles) {
+            const cols = tiles.map(t => t.col);
+            const rows = tiles.map(t => t.row);
+            return {
+                minCol: Math.min(...cols),
+                maxCol: Math.max(...cols),
+                minRow: Math.min(...rows),
+                maxRow: Math.max(...rows)
+            };
+        }
+
+        // 加载图片
+        function loadImage(url, timeout = 5000000) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                const timer = setTimeout(() => reject(new Error(`图片加载超时: ${url}`)), timeout);
+                img.onload = () => {
+                    clearTimeout(timer);
+                    resolve(img);
+                };
+                img.onerror = error => {
+                    clearTimeout(timer);
+                    reject(error);
+                };
+                img.src = url;
+            });
+        }
+
+        // 批量加载图片
+        async function getAllImages(tiles) {
+            const loadPromises = tiles.map(tile =>
+                loadImage(tile.url).catch(error => {
+                    console.error(`加载瓦片失败: ${tile.url}`, error);
+                    return null;
+                })
+            );
+            return await Promise.all(loadPromises);
+        }
+
+        // ==================== Three.js场景创建 ====================
+        function createScene(domID, camera) {
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            const container = domID;
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container[0].clientWidth, container[0].clientHeight);
+            container[0].appendChild(renderer.domElement);
+            scene.add(ambientLight);
+            scene.add(directionalLight);
+            const control = new THREE.OrbitControls(camera, renderer.domElement);
+            control.enablePan = true;
+            control.panSpeed = 1.0;
+            control.keyPanSpeed = 20.0;
+
+            return [scene, control, renderer];
+        }
+
+        // ==================== 获取绘制框边界 ====================
+        function getBbox() {
+            return new Promise((resolve, reject) => {
+                const handler = e => {
+                    const bbox = e.currentBounds;
+                    recTool.removeEventListener('draw', handler);
+                    resolve(bbox);
+                };
+                recTool.addEventListener('draw', handler);
+            });
+        }
+
+        // ==================== 获取DEM数据URL ====================
+        async function setDEMUrl(layerName, bbox) {
+            const resolution = 0.00027777778;
+            const minX = bbox.getSouthWest().lng;
+            const minY = bbox.getSouthWest().lat;
+            const maxX = bbox.getNorthEast().lng;
+            const maxY = bbox.getNorthEast().lat;
+
+            let wcsURL = 'http://localhost:8080/geoserver/wcs?service=WCS&version=2.0.1&request=GetCoverage&coverageId=' +
+                layerName + '&format=image/tiff&subset=Long(' + minX + ',' + maxX + ')&subset=Lat(' + minY + ',' + maxY + ')';
+
+            const demData = await fetch(wcsURL);
+            const arrayBuffer = await demData.arrayBuffer();
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const dem_range = image.getBoundingBox();
+
+            let [dem_minX, dem_minY, dem_maxX, dem_maxY] = dem_range;
+            if (minX < dem_minX) dem_minX = dem_minX - resolution;
+            if (minY < dem_minY) dem_minY = dem_minY - resolution;
+            if (maxX > dem_maxX) dem_maxX = dem_maxX + resolution;
+            if (maxY > dem_maxY) dem_maxY = dem_maxY + resolution;
+
+            wcsURL = 'http://localhost:8080/geoserver/wcs?service=WCS&version=2.0.1&request=GetCoverage&coverageId=' +
+                layerName + '&format=image/tiff&subset=Long(' + dem_minX + ',' + dem_maxX + ')&subset=Lat(' + dem_minY + ',' + dem_maxY + ')';
+
+            return [wcsURL, [dem_minX, dem_minY, dem_maxX, dem_maxY]];
+        }
+
+        // ==================== 创建DEM网格 ====================
+        async function c_mesh_dem(demData, camera, m_meshname) {
+            const tiff = await GeoTIFF.fromArrayBuffer(demData);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const width = image.getWidth();
+            const height = image.getHeight();
+            const elevationData = new Float32Array(rasters[0]);
+            
+            const geometry = new THREE.PlaneGeometry(5, 5 * height / width, width - 1, height - 1);
+            
+            let maxElevation = -Infinity;
+            let minElevation = Infinity;
+            for (let i = 0; i < elevationData.length; i++) {
+                if (elevationData[i] > maxElevation) maxElevation = elevationData[i];
+                if (elevationData[i] !== 0 && elevationData[i] < minElevation) minElevation = elevationData[i];
+            }
+            
+            const positions = geometry.attributes.position.array;
+            for (let i = 0; i < elevationData.length; i++) {
+                if (maxElevation == minElevation) {
+                    positions[i * 3 + 2] = 0;
+                } else {
+                    positions[i * 3 + 2] = (elevationData[i] - minElevation) / (maxElevation - minElevation);
+                }
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.computeVertexNormals();
+
+            const mesh_dem = new THREE.Mesh(geometry);
+            mesh_dem.name = m_meshname;
+            mesh_dem.rotation.x = -Math.PI / 2;
+            camera.position.set(0, 5, 3.5);
+            return [mesh_dem, minElevation, maxElevation, geometry];
+        }
+
+        // ==================== 获取影像+注记图层 ====================
+        async function c_dom_img_cia_lv(bbox, lv) {
+            const zoom = lv;
+            const tileSize = 256;
+            const minX = bbox.getSouthWest().lng;
+            const minY = bbox.getSouthWest().lat;
+            const maxX = bbox.getNorthEast().lng;
+            const maxY = bbox.getNorthEast().lat;
+
+            const nw = lngLatToTile(minX, maxY, zoom);
+            const ne = lngLatToTile(maxX, maxY, zoom);
+            const sw = lngLatToTile(minX, minY, zoom);
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            const tiles2 = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({ url: getTileWMTSUrlIMG(col, row, zoom), col: col, row: row });
+                    tiles2.push({ url: getTileWMTSUrlCIA(col, row, zoom), col: col, row: row });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            const canvas1 = document.createElement('canvas');
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom);
+            const [lastTile_se_x, lastTile_se_y] = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+            const geo_width = lastTile_se_x - firstTile_nw_x;
+            const geo_height = lastTile_se_y - firstTile_nw_y;
+            const pixelsPerDegreeX = canvasWidth / geo_width;
+            const pixelsPerDegreeY = canvasHeight / geo_height;
+            const selectionPixelWidth = (maxX - minX) * pixelsPerDegreeX;
+            const selectionPixelHeight = (minY - maxY) * pixelsPerDegreeY;
+
+            const canvas2 = document.createElement('canvas');
+            canvas2.width = Math.ceil(selectionPixelWidth);
+            canvas2.height = Math.ceil(selectionPixelHeight);
+            const ctx2 = canvas2.getContext('2d');
+
+            const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX;
+            const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY;
+
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const images = await getAllImages(tiles);
+                    images.forEach((img, index) => {
+                        const tile = tiles[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(img, x, y, tileSize, tileSize);
+                    });
+                    const cias = await getAllImages(tiles2);
+                    cias.forEach((cia, index) => {
+                        const tile = tiles2[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(cia, x, y, tileSize, tileSize);
+                    });
+                    const imageData = ctx1.getImageData(Math.floor(offset_x), Math.floor(offset_y), canvas2.width, canvas2.height);
+                    ctx2.putImageData(imageData, 0, 0);
+                    resolve(canvas2);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // ==================== 获取矢量+注记图层 ====================
+        async function c_dom_vec_cva_lv(bbox, lv) {
+            const zoom = lv;
+            const tileSize = 256;
+            const minX = bbox.getSouthWest().lng;
+            const minY = bbox.getSouthWest().lat;
+            const maxX = bbox.getNorthEast().lng;
+            const maxY = bbox.getNorthEast().lat;
+
+            const nw = lngLatToTile(minX, maxY, zoom);
+            const ne = lngLatToTile(maxX, maxY, zoom);
+            const sw = lngLatToTile(minX, minY, zoom);
+            const se = lngLatToTile(maxX, minY, zoom);
+
+            const minCol = Math.min(nw[0], sw[0]);
+            const maxCol = Math.max(ne[0], se[0]);
+            const minRow = Math.min(ne[1], se[1]);
+            const maxRow = Math.max(nw[1], sw[1]);
+
+            const tiles = [];
+            const tiles2 = [];
+            for (let col = minCol; col <= maxCol; col++) {
+                for (let row = minRow; row <= maxRow; row++) {
+                    tiles.push({ url: getTileWMTSUrlVEC(col, row, zoom), col: col, row: row });
+                    tiles2.push({ url: getTileWMTSUrlCVA(col, row, zoom), col: col, row: row });
+                }
+            }
+
+            const bounds = calculateBounds(tiles);
+            const canvasWidth = (bounds.maxCol - bounds.minCol + 1) * tileSize;
+            const canvasHeight = (bounds.maxRow - bounds.minRow + 1) * tileSize;
+
+            const canvas1 = document.createElement('canvas');
+            const ctx1 = canvas1.getContext('2d', { willReadFrequently: true });
+            canvas1.width = canvasWidth;
+            canvas1.height = canvasHeight;
+            ctx1.fillStyle = 'transparent';
+            ctx1.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            const [firstTile_nw_x, firstTile_nw_y] = tileToLngLat(minCol, minRow, zoom);
+            const [lastTile_se_x, lastTile_se_y] = tileToLngLat(maxCol + 1, maxRow + 1, zoom);
+            const geo_width = lastTile_se_x - firstTile_nw_x;
+            const geo_height = lastTile_se_y - firstTile_nw_y;
+            const pixelsPerDegreeX = canvasWidth / geo_width;
+            const pixelsPerDegreeY = canvasHeight / geo_height;
+            const selectionPixelWidth = (maxX - minX) * pixelsPerDegreeX;
+            const selectionPixelHeight = (minY - maxY) * pixelsPerDegreeY;
+
+            const canvas2 = document.createElement('canvas');
+            canvas2.width = Math.ceil(selectionPixelWidth);
+            canvas2.height = Math.ceil(selectionPixelHeight);
+            const ctx2 = canvas2.getContext('2d');
+
+            const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX;
+            const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY;
+
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const images = await getAllImages(tiles);
+                    images.forEach((img, index) => {
+                        const tile = tiles[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(img, x, y, tileSize, tileSize);
+                    });
+                    const cias = await getAllImages(tiles2);
+                    cias.forEach((cia, index) => {
+                        const tile = tiles2[index];
+                        const x = (tile.col - bounds.minCol) * tileSize;
+                        const y = (tile.row - bounds.minRow) * tileSize;
+                        ctx1.drawImage(cia, x, y, tileSize, tileSize);
+                    });
+                    const imageData = ctx1.getImageData(Math.floor(offset_x), Math.floor(offset_y), canvas2.width, canvas2.height);
+                    ctx2.putImageData(imageData, 0, 0);
+                    resolve(canvas2);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // ==================== 主程序 ====================
+        layui.use('layer', function () {
+            var layer = layui.layer
+        })
+
+        var map = new T.Map('map');
+        map.disableDoubleClickZoom();
+        map.centerAndZoom(new T.LngLat(103, 30.007), 18);
+
+        var ctrl = new T.Control.MapType({ position: T_ANCHOR_BOTTOM_RIGHT });
+        map.addControl(ctrl);
+
+        var recTool = new T.RectangleTool(map, {
+            showLabel: false,
+            fillColor: 'green',
+            fillOpacity: 0.001
+        });
+        const camera1 = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000000);
+        camera1.position.set(1, 0, 3);
+
+        const [scene1, control1, renderer1] = createScene($('#threeCon1'), camera1);
+        
+        $('#getDem').on('click', HD1);
+        
+        async function HD1() {
+            recTool.removeEventListener('draw');
+            recTool.clear();
+            recTool.open();
+            let bbox_geo = await getBbox()
+            const x_range = bbox_geo.getNorthEast().lng - bbox_geo.getSouthWest().lng
+            const y_range = bbox_geo.getNorthEast().lat - bbox_geo.getSouthWest().lat
+            var loadIndex = layer.msg('数据加载中', {
+                icon: 16,
+                shade: 0.01,
+                time: false
+            });
+            //先取一次DEM，扩大bounds范围
+            const [DEMUrl, bounds] = await setDEMUrl('WCS_DEM:DEM_SC_FABDEM', bbox_geo);
+            const bbox_geo_expand = new T.LngLatBounds(
+                new T.LngLat(bounds[0], bounds[1]), // 左下
+                new T.LngLat(bounds[2], bounds[3])  // 右上
+            );
+            // 构造扩大范围矩形
+            const geo_rectangle = [];
+            const geo_rectangle_minx = bbox_geo_expand.getSouthWest().getLng();
+            const geo_rectangle_miny = bbox_geo_expand.getSouthWest().getLat();
+            const geo_rectangle_maxx = bbox_geo_expand.getNorthEast().getLng();
+            const geo_rectangle_maxy = bbox_geo_expand.getNorthEast().getLat();
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_miny));
+            geo_rectangle.push(new T.LngLat(geo_rectangle_minx, geo_rectangle_maxy));
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_maxy));
+            geo_rectangle.push(new T.LngLat(geo_rectangle_maxx, geo_rectangle_miny));
+            const rect = new T.Polygon(geo_rectangle, {
+                fillColor: 'green',
+                fillOpacity: 0.001
+            });
+            map.addOverLay(rect);
+            recTool.clear();
+            // 获取DEM数据
+            const demData = await fetch(DEMUrl);
+            const demDataClone = demData.clone();
+            const demDataArrayBuffer = await demDataClone.arrayBuffer();
+            let dem_mesh_material_img = new THREE.MeshBasicMaterial();
+            let dem_mesh_material_vec = new THREE.MeshBasicMaterial();
+            
+            // 清理旧对象
+            const old_dem_mesh = scene1.getObjectByName('mesh_dem');
+            const old_seg_lines = scene1.getObjectByName('seg_line');
+            if (old_dem_mesh) {
+                old_dem_mesh.geometry.dispose();
+                old_dem_mesh.material.dispose();
+                old_seg_lines.geometry.dispose();
+                old_seg_lines.material.dispose();
+                dem_mesh_material_img.dispose();
+                dem_mesh_material_vec.dispose();
+            }
+            scene1.children.length = 0;
+            
+            // 创建DEM网格
+            const [mesh_dem, minEle, maxEle, geometry] = await c_mesh_dem(demDataArrayBuffer, camera1, 'mesh_dem');
+            scene1.add(mesh_dem);
+
+            // 加载纹理
+            const textureLoader = new THREE.TextureLoader();
+            const img_cia_tiles = await c_dom_img_cia_lv(bbox_geo_expand, 18);
+            textureLoader.load(img_cia_tiles.toDataURL('image/png'), function (res) {
+                dem_mesh_material_img.map = res;
+                dem_mesh_material_img.side = THREE.DoubleSide;
+                dem_mesh_material_img.needsUpdate = true;
+            });
+            mesh_dem.material = dem_mesh_material_img;
+            
+            const vec_cva_tiles = await c_dom_vec_cva_lv(bbox_geo_expand, 18);
+            textureLoader.load(vec_cva_tiles.toDataURL('image/png'), function (res) {
+                dem_mesh_material_vec.map = res;
+                dem_mesh_material_vec.side = THREE.DoubleSide;
+                dem_mesh_material_vec.needsUpdate = true;
+            });
+
+            // 显示3D窗口
+            await new Promise((resolve, reject) => {
+                layer.close(loadIndex);
+                $('#Window_3D').css('visibility', 'visible');
+                resolve();
+            });
+
+            // 渲染循环
+            function animate() {
+                requestAnimationFrame(animate);
+                control1.update();
+                renderer1.render(scene1, camera1);
+            }
+            animate();
+        }
+    </script>
+</body>
+
+</html>
