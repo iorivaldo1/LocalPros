@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>河流与网格交点计算可视化</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.5);
+            --river-color: #3b82f6;
+            --river-glow: rgba(59, 130, 246, 0.6);
+            --cell-bg: rgba(15, 23, 42, 0.6);
+            --cell-border: rgba(51, 65, 85, 0.8);
+            --cell-highlight: rgba(56, 189, 248, 0.3);
+            --intersection-color: #f59e0b;
+            --edge-color: rgba(248, 113, 113, 0.6);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.15), transparent 25%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            align-items: center;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #3b82f6, #38bdf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            display: flex;
+            gap: 1.5rem;
+            max-width: 1400px;
+            width: 100%;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .grid-wrapper {
+            position: relative;
+            background: var(--panel-bg);
+            padding: 2rem 2rem 2.5rem 2.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .axis-labels-y {
+            position: absolute;
+            left: 0.5rem;
+            top: 2rem;
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .axis-labels-x {
+            position: absolute;
+            bottom: 0.5rem;
+            left: 2.5rem;
+            width: 400px;
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .grid-container {
+            position: relative;
+            width: 401px;
+            height: 401px;
+        }
+
+        #gridCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair;
+        }
+
+        .info-panel {
+            background: var(--panel-bg);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            width: 480px;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
+        h3 {
+            font-size: 1rem;
+            color: #fff;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0.4rem;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .control-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.6rem 0.8rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.8rem;
+            font-weight: bold;
+            font-size: 0.75rem;
+        }
+
+        .badge.river { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+        .badge.cell { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+        .badge.intersection { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+
+        .btn-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            padding: 0.6rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            background: #475569;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        button.secondary {
+            background: linear-gradient(135deg, #64748b, #475569);
+        }
+
+        button.warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.6rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .stat-card.full-width {
+            grid-column: span 3;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 0.2rem;
+        }
+
+        .stat-value {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--accent);
+            font-family: monospace;
+        }
+
+        .table-container {
+            max-height: 200px;
+            overflow-y: auto;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+
+        th, td {
+            text-align: center;
+            padding: 0.5rem 0.3rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        th {
+            background: rgba(15, 23, 42, 0.9);
+            position: sticky;
+            top: 0;
+            font-weight: 600;
+            color: var(--text-muted);
+            z-index: 5;
+        }
+
+        td {
+            font-family: monospace;
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        tbody tr.highlight {
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        .step-info {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.8rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .step-info code {
+            background: rgba(56, 189, 248, 0.2);
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+            color: var(--accent);
+            font-family: monospace;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            padding: 0.6rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 0.5rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.75rem;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .speed-control input[type="range"] {
+            width: 100px;
+            accent-color: var(--accent);
+        }
+
+        .speed-control span {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>河流与网格交点计算可视化</h1>
+    <p class="subtitle">
+        本演示展示如何使用 DDA 算法找出河流线段经过的所有网格单元格，<br>
+        并计算河流线段与单元格边界的交点。<br>
+        <strong style="color: var(--accent);">点击网格添加河流顶点，然后点击「开始计算」查看过程。</strong>
+    </p>
+</header>
+
+<div class="container">
+    <div class="grid-wrapper">
+        <div class="axis-labels-y" id="axisY"></div>
+        <div class="grid-container">
+            <canvas id="gridCanvas" width="401" height="401"></canvas>
+            <canvas id="overlayCanvas" width="401" height="401"></canvas>
+        </div>
+        <div class="axis-labels-x" id="axisX"></div>
+    </div>
+
+    <div class="info-panel">
+        <div>
+            <h3>图例说明</h3>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #3b82f6;"></div>
+                    <span>河流线段</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(56, 189, 248, 0.4);"></div>
+                    <span>经过的单元格</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(248, 113, 113, 0.6);"></div>
+                    <span>检测的边</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f59e0b; border-radius: 50%;"></div>
+                    <span>交点</span>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>1. 河流顶点</h3>
+            <div class="controls">
+                <div class="control-group">
+                    <span class="badge river">河流顶点数</span>
+                    <span id="pointCount" style="font-family: monospace; font-size: 1rem;">0</span>
+                </div>
+                <div id="pointsList" style="max-height: 80px; overflow-y: auto; font-size: 0.8rem; color: var(--text-muted);">
+                    点击网格添加顶点...
+                </div>
+                <div class="btn-group">
+                    <button id="resetBtn" class="secondary">重置</button>
+                    <button id="startBtn">开始计算</button>
+                    <button id="stepBtn" class="warning" disabled>单步执行</button>
+                </div>
+                <div class="speed-control">
+                    <span>动画速度:</span>
+                    <input type="range" id="speedSlider" min="50" max="1000" value="300">
+                    <span id="speedValue">300ms</span>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>2. 当前计算步骤</h3>
+            <div class="step-info" id="stepInfo">
+                等待开始计算...
+            </div>
+        </div>
+
+        <div>
+            <h3>3. DDA 遍历的单元格</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">当前线段</div>
+                    <div class="stat-value" id="stat-segment">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">经过单元格数</div>
+                    <div class="stat-value" id="stat-cells">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">检测边数</div>
+                    <div class="stat-value" id="stat-edges">-</div>
+                </div>
+            </div>
+            <div class="table-container" style="margin-top: 0.5rem;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>列 (col)</th>
+                            <th>行 (row)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cellsTableBody">
+                        <tr><td colspan="3" style="color:var(--text-muted); padding: 1rem;">等待计算...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
+            <h3>4. 计算得到的交点</h3>
+            <div class="stats-grid">
+                <div class="stat-card full-width">
+                    <div class="stat-label">交点总数</div>
+                    <div class="stat-value" id="stat-intersections">-</div>
+                </div>
+            </div>
+            <div class="table-container" style="margin-top: 0.5rem;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>经度 (lng)</th>
+                            <th>纬度 (lat)</th>
+                            <th>距离²</th>
+                        </tr>
+                    </thead>
+                    <tbody id="intersectionsTableBody">
+                        <tr><td colspan="4" style="color:var(--text-muted); padding: 1rem;">等待计算...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
+            <h3>5. 最终结果点序列</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>经度 (lng)</th>
+                            <th>纬度 (lat)</th>
+                            <th>类型</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultTableBody">
+                        <tr><td colspan="4" style="color:var(--text-muted); padding: 1rem;">等待计算...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ========== 配置 ==========
+    const GRID_SIZE = 10; // 10x10 网格
+    const CELL_SIZE = 40; // 每个单元格 40px
+    const CANVAS_SIZE = GRID_SIZE * CELL_SIZE + 1;
+    const EPSILON = 1e-10;
+
+    // ========== 状态 ==========
+    let riverPoints = [];
+    let isCalculating = false;
+    let animationSpeed = 300;
+    let stepMode = false;
+    let stepResolve = null;
+
+    // ========== Canvas 引用 ==========
+    const gridCanvas = document.getElementById('gridCanvas');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const gridCtx = gridCanvas.getContext('2d');
+    const overlayCtx = overlayCanvas.getContext('2d');
+
+    // ========== 初始化 ==========
+    function init() {
+        drawGrid();
+        setupAxisLabels();
+        setupEventListeners();
+    }
+
+    function drawGrid() {
+        gridCtx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+        gridCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        
+        gridCtx.strokeStyle = 'rgba(51, 65, 85, 0.8)';
+        gridCtx.lineWidth = 1;
+        
+        for (let i = 0; i <= GRID_SIZE; i++) {
+            // 垂直线
+            gridCtx.beginPath();
+            gridCtx.moveTo(i * CELL_SIZE + 0.5, 0);
+            gridCtx.lineTo(i * CELL_SIZE + 0.5, CANVAS_SIZE);
+            gridCtx.stroke();
+            
+            // 水平线
+            gridCtx.beginPath();
+            gridCtx.moveTo(0, i * CELL_SIZE + 0.5);
+            gridCtx.lineTo(CANVAS_SIZE, i * CELL_SIZE + 0.5);
+            gridCtx.stroke();
+        }
+    }
+
+    function setupAxisLabels() {
+        const axisY = document.getElementById('axisY');
+        const axisX = document.getElementById('axisX');
+        axisY.innerHTML = '';
+        axisX.innerHTML = '';
+        
+        for (let i = GRID_SIZE; i >= 0; i--) {
+            const label = document.createElement('span');
+            label.innerText = i;
+            axisY.appendChild(label);
+        }
+        for (let i = 0; i <= GRID_SIZE; i++) {
+            const label = document.createElement('span');
+            label.innerText = i;
+            axisX.appendChild(label);
+        }
+    }
+
+    function setupEventListeners() {
+        overlayCanvas.addEventListener('click', handleCanvasClick);
+        document.getElementById('resetBtn').addEventListener('click', reset);
+        document.getElementById('startBtn').addEventListener('click', startCalculation);
+        document.getElementById('stepBtn').addEventListener('click', nextStep);
+        
+        const speedSlider = document.getElementById('speedSlider');
+        speedSlider.addEventListener('input', (e) => {
+            animationSpeed = parseInt(e.target.value);
+            document.getElementById('speedValue').textContent = animationSpeed + 'ms';
+        });
+    }
+
+    function handleCanvasClick(e) {
+        if (isCalculating) return;
+        
+        const rect = overlayCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // 转换为网格坐标 (0-10)
+        const lng = x / CELL_SIZE;
+        const lat = (CANVAS_SIZE - y) / CELL_SIZE;
+        
+        // 限制在 0-10 范围内
+        const clampedLng = Math.max(0, Math.min(GRID_SIZE, lng));
+        const clampedLat = Math.max(0, Math.min(GRID_SIZE, lat));
+        
+        riverPoints.push({ lng: clampedLng, lat: clampedLat });
+        updatePointsDisplay();
+        redrawOverlay();
+    }
+
+    function updatePointsDisplay() {
+        document.getElementById('pointCount').textContent = riverPoints.length;
+        
+        const listEl = document.getElementById('pointsList');
+        if (riverPoints.length === 0) {
+            listEl.innerHTML = '点击网格添加顶点...';
+        } else {
+            listEl.innerHTML = riverPoints.map((p, i) => 
+                `<span style="color: var(--text-main);">P${i}: (${p.lng.toFixed(2)}, ${p.lat.toFixed(2)})</span>`
+            ).join(' → ');
+        }
+        
+        document.getElementById('startBtn').disabled = riverPoints.length < 2;
+    }
+
+    function redrawOverlay() {
+        overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        
+        // 绘制河流线段
+        if (riverPoints.length > 0) {
+            overlayCtx.strokeStyle = '#3b82f6';
+            overlayCtx.lineWidth = 3;
+            overlayCtx.beginPath();
+            
+            const first = toCanvasCoord(riverPoints[0]);
+            overlayCtx.moveTo(first.x, first.y);
+            
+            for (let i = 1; i < riverPoints.length; i++) {
+                const p = toCanvasCoord(riverPoints[i]);
+                overlayCtx.lineTo(p.x, p.y);
+            }
+            overlayCtx.stroke();
+            
+            // 绘制顶点
+            riverPoints.forEach((p, i) => {
+                const cp = toCanvasCoord(p);
+                overlayCtx.beginPath();
+                overlayCtx.arc(cp.x, cp.y, 6, 0, Math.PI * 2);
+                overlayCtx.fillStyle = i === 0 ? '#a855f7' : (i === riverPoints.length - 1 ? '#ec4899' : '#3b82f6');
+                overlayCtx.fill();
+                overlayCtx.strokeStyle = '#fff';
+                overlayCtx.lineWidth = 2;
+                overlayCtx.stroke();
+            });
+        }
+    }
+
+    function toCanvasCoord(p) {
+        return {
+            x: p.lng * CELL_SIZE,
+            y: CANVAS_SIZE - p.lat * CELL_SIZE
+        };
+    }
+
+    function toGridCoord(canvasX, canvasY) {
+        return {
+            lng: canvasX / CELL_SIZE,
+            lat: (CANVAS_SIZE - canvasY) / CELL_SIZE
+        };
+    }
+
+    // ========== DDA 算法核心 ==========
+    
+    // 获取线段经过的所有单元格 (DDA 算法)
+    function getCellsAlongSegment(x0, y0, x1, y1) {
+        const cells = [];
+        
+        // 起点所在单元格
+        let col = Math.floor(x0);
+        let row = Math.floor(y0);
+        
+        // 终点所在单元格
+        const endCol = Math.floor(x1);
+        const endRow = Math.floor(y1);
+        
+        // 方向
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        
+        // 步进方向
+        const stepX = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+        const stepY = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+        
+        // 计算 t 的增量
+        const tDeltaX = dx !== 0 ? Math.abs(1 / dx) : Infinity;
+        const tDeltaY = dy !== 0 ? Math.abs(1 / dy) : Infinity;
+        
+        // 计算到下一条垂直/水平网格线的 t 值
+        let tMaxX, tMaxY;
+        
+        if (dx > 0) {
+            tMaxX = (Math.floor(x0) + 1 - x0) * tDeltaX;
+        } else if (dx < 0) {
+            tMaxX = (x0 - Math.floor(x0)) * tDeltaX;
+        } else {
+            tMaxX = Infinity;
+        }
+        
+        if (dy > 0) {
+            tMaxY = (Math.floor(y0) + 1 - y0) * tDeltaY;
+        } else if (dy < 0) {
+            tMaxY = (y0 - Math.floor(y0)) * tDeltaY;
+        } else {
+            tMaxY = Infinity;
+        }
+        
+        // 添加起点单元格
+        if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE) {
+            cells.push({ col, row });
+        }
+        
+        // DDA 遍历
+        let safety = 0;
+        const maxIterations = GRID_SIZE * 2 + 10;
+        
+        while (safety++ < maxIterations) {
+            if (col === endCol && row === endRow) break;
+            
+            if (tMaxX < tMaxY) {
+                col += stepX;
+                tMaxX += tDeltaX;
+            } else {
+                row += stepY;
+                tMaxY += tDeltaY;
+            }
+            
+            if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE) {
+                cells.push({ col, row });
+            }
+            
+            // 超出范围则停止
+            if (col < -1 || col > GRID_SIZE || row < -1 || row > GRID_SIZE) break;
+        }
+        
+        return cells;
+    }
+
+    // 获取单元格的四条边
+    function getCellEdges(col, row, visitedEdgeKeys) {
+        const edges = [];
+        const x0 = col;
+        const y0 = row;
+        const x1 = col + 1;
+        const y1 = row + 1;
+        
+        // 四条边: 下、上、左、右
+        const edgeDefs = [
+            { key: `h_${col}_${row}`, edge: [[x0, y0], [x1, y0]], name: '下边' },
+            { key: `h_${col}_${row + 1}`, edge: [[x0, y1], [x1, y1]], name: '上边' },
+            { key: `v_${col}_${row}`, edge: [[x0, y0], [x0, y1]], name: '左边' },
+            { key: `v_${col + 1}_${row}`, edge: [[x1, y0], [x1, y1]], name: '右边' }
+        ];
+        
+        for (const def of edgeDefs) {
+            if (!visitedEdgeKeys.has(def.key)) {
+                visitedEdgeKeys.add(def.key);
+                edges.push({ ...def });
+            }
+        }
+        
+        return edges;
+    }
+
+    // 线段相交检测
+    function lineSegmentsIntersect(edge, riverSeg) {
+        const [[x1, y1], [x2, y2]] = edge.edge;
+        const [[x3, y3], [x4, y4]] = riverSeg;
+        
+        const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        
+        if (Math.abs(denom) < EPSILON) {
+            return { intersects: false };
+        }
+        
+        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+        
+        if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+            const ix = x1 + t * (x2 - x1);
+            const iy = y1 + t * (y2 - y1);
+            return {
+                intersects: true,
+                intersectionPoint: [ix, iy],
+                t: t,
+                u: u
+            };
+        }
+        
+        return { intersects: false };
+    }
+
+    // ========== 可视化计算过程 ==========
+    
+    async function startCalculation() {
+        if (riverPoints.length < 2) return;
+        
+        isCalculating = true;
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stepBtn').disabled = false;
+        document.getElementById('resetBtn').disabled = true;
+        
+        const result = [];
+        
+        // 清空表格
+        document.getElementById('cellsTableBody').innerHTML = '';
+        document.getElementById('intersectionsTableBody').innerHTML = '';
+        document.getElementById('resultTableBody').innerHTML = '';
+        
+        for (let i = 0; i < riverPoints.length - 1; i++) {
+            const p1 = riverPoints[i];
+            const p2 = riverPoints[i + 1];
+            
+            document.getElementById('stat-segment').textContent = `${i + 1} / ${riverPoints.length - 1}`;
+            updateStepInfo(`处理线段 ${i + 1}: P${i} → P${i + 1}`);
+            
+            // 添加起点到结果
+            result.push({ lng: p1.lng, lat: p1.lat, type: '顶点' });
+            addResultRow(result.length, p1.lng, p1.lat, '顶点');
+            
+            await waitForStep();
+            
+            // 河流线段
+            const riverSeg = [[p1.lng, p1.lat], [p2.lng, p2.lat]];
+            
+            // 用 DDA 找出该线段经过的所有单元格
+            updateStepInfo(`使用 DDA 算法遍历线段经过的单元格...<br>
+                <code>getCellsAlongSegment(${p1.lng.toFixed(2)}, ${p1.lat.toFixed(2)}, ${p2.lng.toFixed(2)}, ${p2.lat.toFixed(2)})</code>`);
+            
+            await waitForStep();
+            
+            const cells = getCellsAlongSegment(p1.lng, p1.lat, p2.lng, p2.lat);
+            
+            document.getElementById('stat-cells').textContent = cells.length;
+            
+            // 清空单元格表格并重新填充
+            const cellsBody = document.getElementById('cellsTableBody');
+            cellsBody.innerHTML = '';
+            
+            // 可视化遍历的单元格
+            for (let ci = 0; ci < cells.length; ci++) {
+                const cell = cells[ci];
+                
+                // 高亮当前单元格
+                highlightCell(cell.col, cell.row, 'rgba(56, 189, 248, 0.4)');
+                
+                // 添加到表格
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${ci + 1}</td><td>${cell.col}</td><td>${cell.row}</td>`;
+                tr.classList.add('highlight');
+                cellsBody.appendChild(tr);
+                
+                updateStepInfo(`DDA 遍历: 单元格 (${cell.col}, ${cell.row})`);
+                
+                await waitForStep();
+                
+                tr.classList.remove('highlight');
+            }
+            
+            // 收集相关边并求交
+            const visitedEdgeKeys = new Set();
+            const intersections = [];
+            let edgeCount = 0;
+            
+            updateStepInfo(`检测单元格边界与河流线段的交点...<br>使用 <code>Set</code> 去重共享边`);
+            
+            await waitForStep();
+            
+            for (const cell of cells) {
+                const edges = getCellEdges(cell.col, cell.row, visitedEdgeKeys);
+                edgeCount += edges.length;
+                
+                for (const edge of edges) {
+                    // 高亮当前检测的边
+                    drawEdge(edge.edge, 'rgba(248, 113, 113, 0.8)', 2);
+                    
+                    const intersection = lineSegmentsIntersect(edge, riverSeg);
+                    
+                    if (intersection.intersects) {
+                        const intPoint = intersection.intersectionPoint;
+                        // 计算交点到起点的距离
+                        const dx = intPoint[0] - p1.lng;
+                        const dy = intPoint[1] - p1.lat;
+                        const dist = dx * dx + dy * dy;
+                        
+                        intersections.push({
+                            lng: intPoint[0],
+                            lat: intPoint[1],
+                            dist: dist
+                        });
+                        
+                        // 绘制交点
+                        drawIntersection(intPoint[0], intPoint[1]);
+                        
+                        updateStepInfo(`找到交点! 边: ${edge.name}<br>
+                            坐标: <code>(${intPoint[0].toFixed(4)}, ${intPoint[1].toFixed(4)})</code><br>
+                            距离²: <code>${dist.toFixed(6)}</code>`);
+                        
+                        await waitForStep();
+                    }
+                    
+                    // 淡化已检测的边
+                    drawEdge(edge.edge, 'rgba(248, 113, 113, 0.2)', 1);
+                }
+            }
+            
+            document.getElementById('stat-edges').textContent = edgeCount;
+            
+            // 按距离排序
+            updateStepInfo(`对 ${intersections.length} 个交点按距离排序...<br>
+                <code>intersections.sort((a, b) => a.dist - b.dist)</code>`);
+            
+            await waitForStep();
+            
+            intersections.sort((a, b) => a.dist - b.dist);
+            
+            // 更新交点表格
+            const intBody = document.getElementById('intersectionsTableBody');
+            intBody.innerHTML = '';
+            intersections.forEach((pt, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${idx + 1}</td><td>${pt.lng.toFixed(4)}</td><td>${pt.lat.toFixed(4)}</td><td>${pt.dist.toFixed(6)}</td>`;
+                intBody.appendChild(tr);
+            });
+            
+            document.getElementById('stat-intersections').textContent = intersections.length;
+            
+            // 添加交点（去除与起点或终点过近的重复点）
+            updateStepInfo(`过滤与起点/终点过近的交点...<br>
+                <code>EPSILON = ${EPSILON}</code>`);
+            
+            await waitForStep();
+            
+            for (const pt of intersections) {
+                const dx1 = pt.lng - p1.lng;
+                const dy1 = pt.lat - p1.lat;
+                const dx2 = pt.lng - p2.lng;
+                const dy2 = pt.lat - p2.lat;
+                const dist1 = dx1 * dx1 + dy1 * dy1;
+                const dist2 = dx2 * dx2 + dy2 * dy2;
+                
+                if (dist1 > EPSILON && dist2 > EPSILON) {
+                    result.push({ lng: pt.lng, lat: pt.lat, type: '交点' });
+                    addResultRow(result.length, pt.lng, pt.lat, '交点');
+                    
+                    updateStepInfo(`添加交点: <code>(${pt.lng.toFixed(4)}, ${pt.lat.toFixed(4)})</code><br>
+                        距起点²: ${dist1.toFixed(6)} > ${EPSILON} ✓<br>
+                        距终点²: ${dist2.toFixed(6)} > ${EPSILON} ✓`);
+                } else {
+                    updateStepInfo(`跳过交点: <code>(${pt.lng.toFixed(4)}, ${pt.lat.toFixed(4)})</code><br>
+                        太接近起点或终点`);
+                }
+                
+                await waitForStep();
+            }
+        }
+        
+        // 添加最后一个顶点
+        const lastPoint = riverPoints[riverPoints.length - 1];
+        result.push({ lng: lastPoint.lng, lat: lastPoint.lat, type: '顶点' });
+        addResultRow(result.length, lastPoint.lng, lastPoint.lat, '顶点');
+        
+        updateStepInfo(`计算完成!<br>
+            原始顶点数: ${riverPoints.length}<br>
+            最终结果点数: ${result.length}`);
+        
+        // 绘制最终结果
+        drawFinalResult(result);
+        
+        isCalculating = false;
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stepBtn').disabled = true;
+        document.getElementById('resetBtn').disabled = false;
+    }
+
+    function addResultRow(index, lng, lat, type) {
+        const tbody = document.getElementById('resultTableBody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${index}</td>
+            <td>${lng.toFixed(4)}</td>
+            <td>${lat.toFixed(4)}</td>
+            <td style="color: ${type === '顶点' ? '#a855f7' : '#f59e0b'}">${type}</td>
+        `;
+        tbody.appendChild(tr);
+        
+        // 滚动到底部
+        const container = tbody.closest('.table-container');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function highlightCell(col, row, color) {
+        overlayCtx.fillStyle = color;
+        overlayCtx.fillRect(
+            col * CELL_SIZE + 1,
+            (GRID_SIZE - row - 1) * CELL_SIZE + 1,
+            CELL_SIZE - 1,
+            CELL_SIZE - 1
+        );
+        
+        // 重绘河流线
+        redrawRiver();
+    }
+
+    function redrawRiver() {
+        if (riverPoints.length > 0) {
+            overlayCtx.strokeStyle = '#3b82f6';
+            overlayCtx.lineWidth = 3;
+            overlayCtx.beginPath();
+            
+            const first = toCanvasCoord(riverPoints[0]);
+            overlayCtx.moveTo(first.x, first.y);
+            
+            for (let i = 1; i < riverPoints.length; i++) {
+                const p = toCanvasCoord(riverPoints[i]);
+                overlayCtx.lineTo(p.x, p.y);
+            }
+            overlayCtx.stroke();
+            
+            // 绘制顶点
+            riverPoints.forEach((p, i) => {
+                const cp = toCanvasCoord(p);
+                overlayCtx.beginPath();
+                overlayCtx.arc(cp.x, cp.y, 6, 0, Math.PI * 2);
+                overlayCtx.fillStyle = i === 0 ? '#a855f7' : (i === riverPoints.length - 1 ? '#ec4899' : '#3b82f6');
+                overlayCtx.fill();
+                overlayCtx.strokeStyle = '#fff';
+                overlayCtx.lineWidth = 2;
+                overlayCtx.stroke();
+            });
+        }
+    }
+
+    function drawEdge(edge, color, width) {
+        const [[x1, y1], [x2, y2]] = edge;
+        const p1 = toCanvasCoord({ lng: x1, lat: y1 });
+        const p2 = toCanvasCoord({ lng: x2, lat: y2 });
+        
+        overlayCtx.strokeStyle = color;
+        overlayCtx.lineWidth = width;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(p1.x, p1.y);
+        overlayCtx.lineTo(p2.x, p2.y);
+        overlayCtx.stroke();
+    }
+
+    function drawIntersection(lng, lat) {
+        const p = toCanvasCoord({ lng, lat });
+        
+        overlayCtx.beginPath();
+        overlayCtx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        overlayCtx.fillStyle = '#f59e0b';
+        overlayCtx.fill();
+        overlayCtx.strokeStyle = '#fff';
+        overlayCtx.lineWidth = 2;
+        overlayCtx.stroke();
+    }
+
+    function drawFinalResult(result) {
+        overlayCtx.strokeStyle = '#22c55e';
+        overlayCtx.lineWidth = 2;
+        overlayCtx.setLineDash([5, 5]);
+        overlayCtx.beginPath();
+        
+        if (result.length > 0) {
+            const first = toCanvasCoord(result[0]);
+            overlayCtx.moveTo(first.x, first.y);
+            
+            for (let i = 1; i < result.length; i++) {
+                const p = toCanvasCoord(result[i]);
+                overlayCtx.lineTo(p.x, p.y);
+            }
+        }
+        overlayCtx.stroke();
+        overlayCtx.setLineDash([]);
+    }
+
+    function updateStepInfo(html) {
+        document.getElementById('stepInfo').innerHTML = html;
+    }
+
+    async function waitForStep() {
+        if (stepMode) {
+            return new Promise(resolve => {
+                stepResolve = resolve;
+            });
+        } else {
+            return new Promise(resolve => setTimeout(resolve, animationSpeed));
+        }
+    }
+
+    function nextStep() {
+        if (stepResolve) {
+            stepResolve();
+            stepResolve = null;
+        }
+    }
+
+    function reset() {
+        riverPoints = [];
+        isCalculating = false;
+        stepMode = false;
+        stepResolve = null;
+        
+        updatePointsDisplay();
+        overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stepBtn').disabled = true;
+        document.getElementById('resetBtn').disabled = false;
+        
+        document.getElementById('stat-segment').textContent = '-';
+        document.getElementById('stat-cells').textContent = '-';
+        document.getElementById('stat-edges').textContent = '-';
+        document.getElementById('stat-intersections').textContent = '-';
+        
+        document.getElementById('cellsTableBody').innerHTML = '<tr><td colspan="3" style="color:var(--text-muted); padding: 1rem;">等待计算...</td></tr>';
+        document.getElementById('intersectionsTableBody').innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); padding: 1rem;">等待计算...</td></tr>';
+        document.getElementById('resultTableBody').innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); padding: 1rem;">等待计算...</td></tr>';
+        
+        updateStepInfo('等待开始计算...');
+    }
+
+    // 初始化
+    init();
+</script>
+</body>
+</html>

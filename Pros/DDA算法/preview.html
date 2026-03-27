@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDA算法演示</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .controls {
+            margin: 10px 0;
+        }
+        .controls button {
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        #stepInfo {
+            margin-left: 20px;
+            font-size: 14px;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            display: block;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="prevBtn">上一步</button>
+        <button id="nextBtn">下一步</button>
+        <button id="resetBtn">重置</button>
+        <span id="stepInfo"></span>
+    </div>
+    <canvas id="c" width="800" height="600"></canvas>
+    <script>
+const canvas = document.getElementById("c")
+const ctx = canvas.getContext("2d")
+
+// ===== 网格参数 =====
+const cols = 10
+const rows = 10
+const size = 60
+
+// ===== 线段 =====
+const start = { x: 50, y: 80 }
+const end   = { x: 520, y: 260 }
+
+const dx = end.x - start.x
+const dy = end.y - start.y
+
+// ===== 初始状态 =====
+const initCol = Math.floor(start.x / size)
+const initRow = Math.floor(start.y / size)
+
+const endCol = Math.floor(end.x / size)
+const endRow = Math.floor(end.y / size)
+
+const stepCol = dx >= 0 ? 1 : -1
+const stepRow = dy >= 0 ? 1 : -1
+
+// ===== 计算初始 tMax =====
+function calcInitTMaxX() {
+    if (Math.abs(dx) < 1e-6) return Infinity
+    const nextX = stepCol > 0 ? (initCol + 1) * size : initCol * size
+    return (nextX - start.x) / dx
+}
+
+function calcInitTMaxY() {
+    if (Math.abs(dy) < 1e-6) return Infinity
+    const nextY = stepRow > 0 ? (initRow + 1) * size : initRow * size
+    return (nextY - start.y) / dy
+}
+
+const tDeltaX = Math.abs(dx) < 1e-6 ? Infinity : size / Math.abs(dx)
+const tDeltaY = Math.abs(dy) < 1e-6 ? Infinity : size / Math.abs(dy)
+
+// ===== 当前状态 =====
+let col = initCol
+let row = initRow
+let tMaxX = calcInitTMaxX()
+let tMaxY = calcInitTMaxY()
+
+// ===== 历史记录（用于上一步） =====
+let history = []
+let currentStep = 0
+
+function saveState() {
+    history.push({ col, row, tMaxX, tMaxY })
+}
+
+// 保存初始状态
+saveState()
+
+// ===== 动画 =====
+function draw() {
+    ctx.clearRect(0,0,800,600)
+
+    // 网格
+    ctx.strokeStyle = "#ccc"
+    for (let i=0;i<=cols;i++) {
+        ctx.beginPath()
+        ctx.moveTo(i*size,0)
+        ctx.lineTo(i*size,600)
+        ctx.stroke()
+    }
+    for (let j=0;j<=rows;j++) {
+        ctx.beginPath()
+        ctx.moveTo(0,j*size)
+        ctx.lineTo(600,j*size)
+        ctx.stroke()
+    }
+
+    // 线段
+    ctx.strokeStyle = "black"
+    ctx.beginPath()
+    ctx.moveTo(start.x, start.y)
+    ctx.lineTo(end.x, end.y)
+    ctx.stroke()
+
+    // 当前 cell
+    ctx.fillStyle = "rgba(0,255,0,0.2)"
+    ctx.fillRect(col*size, row*size, size, size)
+
+    // ===== 画 tMaxX / tMaxY =====
+    const px = start.x + dx * tMaxX
+    const py = start.y + dy * tMaxX
+
+    const qx = start.x + dx * tMaxY
+    const qy = start.y + dy * tMaxY
+
+    // 只显示当前步骤中较小的t值对应的点
+    if (tMaxX < tMaxY) {
+        // X 交点（红）- 当前步骤选择X方向
+        ctx.fillStyle = "red"
+        ctx.beginPath()
+        ctx.arc(px, py, 5, 0, Math.PI*2)
+        ctx.fill()
+    } else if (tMaxY < tMaxX) {
+        // Y 交点（蓝）- 当前步骤选择Y方向  
+        ctx.fillStyle = "blue"
+        ctx.beginPath()
+        ctx.arc(qx, qy, 5, 0, Math.PI*2)
+        ctx.fill()
+    } else {
+        // 相等时显示两个点（极少见情况）
+        ctx.fillStyle = "red"
+        ctx.beginPath()
+        ctx.arc(px, py, 5, 0, Math.PI*2)
+        ctx.fill()
+        
+        ctx.fillStyle = "blue"
+        ctx.beginPath()
+        ctx.arc(qx, qy, 5, 0, Math.PI*2)
+        ctx.fill()
+    }
+
+    // 文字
+    ctx.fillStyle = "black"
+    ctx.font = "16px Arial"
+    
+    // 获取文字宽度以便右对齐
+    const tMaxXText = "tMaxX: " + tMaxX.toFixed(2)
+    const tMaxYText = "tMaxY: " + tMaxY.toFixed(2)
+    const tMaxXWidth = ctx.measureText(tMaxXText).width
+    const tMaxYWidth = ctx.measureText(tMaxYText).width
+    
+    // 在右上角显示，距离右边和上边各留10px边距
+    ctx.fillText(tMaxXText, 800 - tMaxXWidth - 10, 20)
+    ctx.fillText(tMaxYText, 800 - tMaxYWidth - 10, 40)
+    
+    // 右侧图例说明
+    const legendX = 630  // 网格右边留30px边距
+    const legendY = 80   // 从80px开始
+    
+    ctx.fillStyle = "black"
+    ctx.font = "14px Arial"
+    ctx.fillText("图例说明:", legendX, legendY)
+    
+    // 当前激活的点说明
+    ctx.font = "12px Arial"
+    if (tMaxX < tMaxY) {
+        // 红色点图例 - 当前激活
+        ctx.fillStyle = "red"
+        ctx.beginPath()
+        ctx.arc(legendX + 10, legendY + 30, 5, 0, Math.PI*2)
+        ctx.fill()
+        ctx.fillStyle = "red"
+        ctx.fillText("当前选择: X方向移动", legendX + 25, legendY + 35)
+        ctx.fillStyle = "black"
+        ctx.fillText("tMaxX < tMaxY，选择红色点", legendX + 25, legendY + 50)
+    } else if (tMaxY < tMaxX) {
+        // 蓝色点图例 - 当前激活
+        ctx.fillStyle = "blue"
+        ctx.beginPath()
+        ctx.arc(legendX + 10, legendY + 30, 5, 0, Math.PI*2)
+        ctx.fill()
+        ctx.fillStyle = "blue"
+        ctx.fillText("当前选择: Y方向移动", legendX + 25, legendY + 35)
+        ctx.fillStyle = "black"
+        ctx.fillText("tMaxY < tMaxX，选择蓝色点", legendX + 25, legendY + 50)
+    } else {
+        ctx.fillStyle = "black"
+        ctx.fillText("tMaxX = tMaxY (同时显示)", legendX + 10, legendY + 35)
+    }
+    
+    // 固定的颜色含义说明
+    ctx.fillStyle = "black"
+    ctx.font = "14px Arial"
+    ctx.fillText("颜色含义:", legendX, legendY + 80)
+    ctx.font = "12px Arial"
+    
+    // 红色点含义
+    ctx.fillStyle = "red"
+    ctx.beginPath()
+    ctx.arc(legendX + 10, legendY + 100, 4, 0, Math.PI*2)
+    ctx.fill()
+    ctx.fillStyle = "black"
+    ctx.fillText("红色: X方向网格线交点", legendX + 25, legendY + 105)
+    
+    // 蓝色点含义
+    ctx.fillStyle = "blue"
+    ctx.beginPath()
+    ctx.arc(legendX + 10, legendY + 120, 4, 0, Math.PI*2)
+    ctx.fill()
+    ctx.fillStyle = "black"
+    ctx.fillText("蓝色: Y方向网格线交点", legendX + 25, legendY + 125)
+    
+    // DDA算法说明
+    ctx.fillStyle = "black"
+    ctx.font = "14px Arial"
+    ctx.fillText("DDA算法步骤:", legendX, legendY + 155)
+    ctx.font = "12px Arial"
+    ctx.fillText("1. 比较 tMaxX 与 tMaxY", legendX, legendY + 175)
+    ctx.fillText("2. 选择较小t值的方向", legendX, legendY + 190)
+    ctx.fillText("3. 移动并更新对应的t值", legendX, legendY + 205)
+    
+    // 更新步数信息
+    updateStepInfo()
+}
+
+function updateStepInfo() {
+    const stepInfo = document.getElementById("stepInfo")
+    const isEnd = col === endCol && row === endRow
+    stepInfo.textContent = `步数: ${currentStep} | 当前格子: (${col}, ${row}) | 目标: (${endCol}, ${endRow})${isEnd ? ' ✓ 已到达' : ''}`
+}
+
+function stepForward() {
+    if (col === endCol && row === endRow) return false
+
+    if (tMaxX < tMaxY) {
+        col += stepCol
+        tMaxX += tDeltaX
+    } else {
+        row += stepRow
+        tMaxY += tDeltaY
+    }
+    
+    currentStep++
+    saveState()
+    return true
+}
+
+function stepBackward() {
+    if (currentStep <= 0) return false
+    
+    currentStep--
+    const state = history[currentStep]
+    col = state.col
+    row = state.row
+    tMaxX = state.tMaxX
+    tMaxY = state.tMaxY
+    
+    // 移除后面的历史
+    history = history.slice(0, currentStep + 1)
+    return true
+}
+
+function reset() {
+    col = initCol
+    row = initRow
+    tMaxX = calcInitTMaxX()
+    tMaxY = calcInitTMaxY()
+    history = []
+    currentStep = 0
+    saveState()
+    draw()
+}
+
+// ===== 按钮事件 =====
+document.getElementById("prevBtn").addEventListener("click", () => {
+    stepBackward()
+    draw()
+})
+
+document.getElementById("nextBtn").addEventListener("click", () => {
+    stepForward()
+    draw()
+})
+
+document.getElementById("resetBtn").addEventListener("click", reset)
+
+draw()
+    </script>
+</body>
+</html>
