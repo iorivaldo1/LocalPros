@@ -169,7 +169,7 @@ function draw() {
     ctx.lineTo(end.x, end.y)
     ctx.stroke()
 
-    // 绘制历史路径上的格子和tMax值（包括当前格子）
+    // 绘制历史路径上的格子（不显示文字）
     for (let i = 0; i < pathHistory.length; i++) {
         const path = pathHistory[i]
         const isCurrent = (i === pathHistory.length - 1)
@@ -189,60 +189,73 @@ function draw() {
             ctx.strokeRect(path.col * size, path.row * size, size, size)
             ctx.lineWidth = 1
         }
-        
-        // 在格子中显示tMax值
-        ctx.fillStyle = "#333"
-        ctx.font = "11px Arial"
-        const centerX = path.col * size + size / 2
-        const centerY = path.row * size + size / 2
-        
-        // 显示步数
-        ctx.fillStyle = "#666"
-        ctx.font = "bold 10px Arial"
-        ctx.textAlign = "center"
-        ctx.fillText(`步${path.step}`, centerX, centerY - 12)
-        
-        // 显示tMaxX
-        ctx.fillStyle = "red"
-        ctx.font = "10px Arial"
-        ctx.fillText(`X:${path.tMaxX}`, centerX, centerY + 2)
-        
-        // 显示tMaxY
-        ctx.fillStyle = "blue"
-        ctx.fillText(`Y:${path.tMaxY}`, centerX, centerY + 14)
     }
 
-    // ===== 画 tMaxX / tMaxY =====
+    // ===== 画 tMaxX / tMaxY 矢量 =====
     const px = start.x + dx * tMaxX
     const py = start.y + dy * tMaxX
 
     const qx = start.x + dx * tMaxY
     const qy = start.y + dy * tMaxY
 
-    // 只显示当前步骤中较小的t值对应的点
-    if (tMaxX < tMaxY) {
-        // X 交点（红）- 当前步骤选择X方向
-        ctx.fillStyle = "red"
+    // 绘制箭头的辅助函数
+    function drawArrow(fromX, fromY, toX, toY, color, label) {
+        ctx.save()
+        
+        // 绘制线段
+        ctx.strokeStyle = color
+        ctx.lineWidth = 2
         ctx.beginPath()
-        ctx.arc(px, py, 5, 0, Math.PI*2)
-        ctx.fill()
-    } else if (tMaxY < tMaxX) {
-        // Y 交点（蓝）- 当前步骤选择Y方向  
-        ctx.fillStyle = "blue"
+        ctx.moveTo(fromX, fromY)
+        ctx.lineTo(toX, toY)
+        ctx.stroke()
+        
+        // 计算箭头角度
+        const angle = Math.atan2(toY - fromY, toX - fromX)
+        const arrowLength = 10
+        const arrowAngle = Math.PI / 6
+        
+        // 绘制箭头头部
+        ctx.fillStyle = color
         ctx.beginPath()
-        ctx.arc(qx, qy, 5, 0, Math.PI*2)
-        ctx.fill()
-    } else {
-        // 相等时显示两个点（极少见情况）
-        ctx.fillStyle = "red"
-        ctx.beginPath()
-        ctx.arc(px, py, 5, 0, Math.PI*2)
+        ctx.moveTo(toX, toY)
+        ctx.lineTo(
+            toX - arrowLength * Math.cos(angle - arrowAngle),
+            toY - arrowLength * Math.sin(angle - arrowAngle)
+        )
+        ctx.lineTo(
+            toX - arrowLength * Math.cos(angle + arrowAngle),
+            toY - arrowLength * Math.sin(angle + arrowAngle)
+        )
+        ctx.closePath()
         ctx.fill()
         
-        ctx.fillStyle = "blue"
+        // 在箭头末端绘制点
         ctx.beginPath()
-        ctx.arc(qx, qy, 5, 0, Math.PI*2)
+        ctx.arc(toX, toY, 5, 0, Math.PI*2)
         ctx.fill()
+        
+        // 在箭头旁边标注
+        ctx.fillStyle = color
+        ctx.font = "12px Arial"
+        const offsetX = 10
+        const offsetY = -10
+        ctx.fillText(label, toX + offsetX, toY + offsetY)
+        
+        ctx.restore()
+    }
+
+    // 只显示当前步骤中较小的t值对应的矢量
+    if (tMaxX < tMaxY) {
+        // 绘制tMaxX矢量（红色）- 当前步骤选择X方向
+        drawArrow(start.x, start.y, px, py, "red", `tMaxX=${tMaxX.toFixed(2)}`)
+    } else if (tMaxY < tMaxX) {
+        // 绘制tMaxY矢量（蓝色）- 当前步骤选择Y方向
+        drawArrow(start.x, start.y, qx, qy, "blue", `tMaxY=${tMaxY.toFixed(2)}`)
+    } else {
+        // 相等时显示两个矢量（极少见情况）
+        drawArrow(start.x, start.y, px, py, "red", `tMaxX=${tMaxX.toFixed(2)}`)
+        drawArrow(start.x, start.y, qx, qy, "blue", `tMaxY=${tMaxY.toFixed(2)}`)
     }
 
     // 文字
@@ -270,96 +283,139 @@ function draw() {
     ctx.fillText(tDeltaXText, 1000 - tDeltaXWidth - 10, 65)
     ctx.fillText(tDeltaYText, 1000 - tDeltaYWidth - 10, 80)
     
-    // 右侧图例说明
-    const legendX = 720  // 网格右边留20px边距
-    const legendY = 120   // 从120px开始
+    // ===== 显示计算过程 =====
+    const calcX = 650  // 计算过程显示位置
+    const calcY = 20
     
-    ctx.fillStyle = "black"
-    ctx.font = "16px Arial"
-    ctx.fillText("图例说明:", legendX, legendY)
+    ctx.fillStyle = "#2c3e50"
+    ctx.font = "bold 16px Arial"
+    ctx.textAlign = "left"
+    ctx.fillText("计算过程：", calcX, calcY)
     
-    // 当前激活的点说明
+    ctx.fillStyle = "#34495e"
     ctx.font = "14px Arial"
-    if (tMaxX < tMaxY) {
-        // 红色点图例 - 当前激活
-        ctx.fillStyle = "red"
-        ctx.beginPath()
-        ctx.arc(legendX -50, legendY + 30, 6, 0, Math.PI*2)
-        ctx.fill()
-        ctx.fillStyle = "red"
-        ctx.fillText("当前选择: X方向移动", legendX + 30, legendY + 35)
-        ctx.fillStyle = "black"
-        ctx.fillText("tMaxX < tMaxY，选择红色点", legendX + 30, legendY + 55)
-    } else if (tMaxY < tMaxX) {
-        // 蓝色点图例 - 当前激活
-        ctx.fillStyle = "blue"
-        ctx.beginPath()
-        ctx.arc(legendX + 12, legendY + 30, 6, 0, Math.PI*2)
-        ctx.fill()
-        ctx.fillStyle = "blue"
-        ctx.fillText("当前选择: Y方向移动", legendX + 30, legendY + 35)
-        ctx.fillStyle = "black"
-        ctx.fillText("tMaxY < tMaxX，选择蓝色点", legendX + 30, legendY + 55)
+    let lineY = calcY + 25
+    const lineHeight = 20
+    
+    // 基本参数
+    ctx.fillText(`起点: (${start.x}, ${start.y})`, calcX, lineY)
+    lineY += lineHeight
+    ctx.fillText(`终点: (${end.x}, ${end.y})`, calcX, lineY)
+    lineY += lineHeight
+    ctx.fillText(`网格大小: ${size}`, calcX, lineY)
+    lineY += lineHeight + 5
+    
+    // dx, dy计算
+    ctx.fillStyle = "#16a085"
+    ctx.font = "bold 14px Arial"
+    ctx.fillText("步骤1: 计算方向向量", calcX, lineY)
+    ctx.fillStyle = "#34495e"
+    ctx.font = "14px Arial"
+    lineY += lineHeight
+    ctx.fillText(`dx = ${end.x} - ${start.x} = ${dx}`, calcX + 10, lineY)
+    lineY += lineHeight
+    ctx.fillText(`dy = ${end.y} - ${start.y} = ${dy}`, calcX + 10, lineY)
+    lineY += lineHeight + 5
+    
+    // 初始格子
+    ctx.fillStyle = "#16a085"
+    ctx.font = "bold 14px Arial"
+    ctx.fillText("步骤2: 确定初始格子", calcX, lineY)
+    ctx.fillStyle = "#34495e"
+    ctx.font = "14px Arial"
+    lineY += lineHeight
+    ctx.fillText(`起点格子: (${initCol}, ${initRow})`, calcX + 10, lineY)
+    lineY += lineHeight
+    ctx.fillText(`终点格子: (${endCol}, ${endRow})`, calcX + 10, lineY)
+    lineY += lineHeight
+    ctx.fillText(`步进方向: (${stepCol}, ${stepRow})`, calcX + 10, lineY)
+    lineY += lineHeight + 5
+    
+    // tDelta计算
+    ctx.fillStyle = "#16a085"
+    ctx.font = "bold 14px Arial"
+    ctx.fillText("步骤3: 计算tDelta", calcX, lineY)
+    ctx.fillStyle = "#34495e"
+    ctx.font = "14px Arial"
+    lineY += lineHeight
+    
+    if (Math.abs(dx) < 1e-6) {
+        ctx.fillText(`tDeltaX = ∞ (dx ≈ 0)`, calcX + 10, lineY)
     } else {
-        ctx.fillStyle = "black"
-        ctx.fillText("tMaxX = tMaxY (同时显示)", legendX + 12, legendY + 35)
+        ctx.fillText(`tDeltaX = ${size} / |${dx}| = ${tDeltaX.toFixed(3)}`, calcX + 10, lineY)
+    }
+    lineY += lineHeight
+    
+    if (Math.abs(dy) < 1e-6) {
+        ctx.fillText(`tDeltaY = ∞ (dy ≈ 0)`, calcX + 10, lineY)
+    } else {
+        ctx.fillText(`tDeltaY = ${size} / |${dy}| = ${tDeltaY.toFixed(3)}`, calcX + 10, lineY)
+    }
+    lineY += lineHeight + 5
+    
+    // tMax初始值计算
+    ctx.fillStyle = "#16a085"
+    ctx.font = "bold 14px Arial"
+    ctx.fillText("步骤4: 计算初始tMax", calcX, lineY)
+    ctx.fillStyle = "#34495e"
+    ctx.font = "14px Arial"
+    lineY += lineHeight
+    
+    // tMaxX初始计算
+    const nextX = stepCol > 0 ? (initCol + 1) * size : initCol * size
+    const initTMaxX = calcInitTMaxX()
+    if (Math.abs(dx) < 1e-6) {
+        ctx.fillText(`tMaxX初始 = ∞ (dx ≈ 0)`, calcX + 10, lineY)
+    } else {
+        ctx.fillText(`下一X边界 = ${nextX}`, calcX + 10, lineY)
+        lineY += lineHeight
+        ctx.fillText(`tMaxX初始 = (${nextX} - ${start.x}) / ${dx}`, calcX + 10, lineY)
+        lineY += lineHeight
+        ctx.fillText(`       = ${initTMaxX.toFixed(3)}`, calcX + 10, lineY)
+        lineY -= lineHeight
+    }
+    lineY += lineHeight
+    
+    // tMaxY初始计算
+    const nextY = stepRow > 0 ? (initRow + 1) * size : initRow * size
+    const initTMaxY = calcInitTMaxY()
+    if (Math.abs(dy) < 1e-6) {
+        ctx.fillText(`tMaxY初始 = ∞ (dy ≈ 0)`, calcX + 10, lineY)
+    } else {
+        ctx.fillText(`下一Y边界 = ${nextY}`, calcX + 10, lineY)
+        lineY += lineHeight
+        ctx.fillText(`tMaxY初始 = (${nextY} - ${start.y}) / ${dy}`, calcX + 10, lineY)
+        lineY += lineHeight
+        ctx.fillText(`       = ${initTMaxY.toFixed(3)}`, calcX + 10, lineY)
+        lineY -= lineHeight
+    }
+    lineY += lineHeight + 5
+    
+    // 当前tMax值（如果已经移动过）
+    if (currentStep > 0) {
+        ctx.fillStyle = "#e74c3c"
+        ctx.font = "bold 14px Arial"
+        ctx.fillText(`当前步骤 ${currentStep}:`, calcX, lineY)
+        ctx.fillStyle = "#34495e"
+        ctx.font = "14px Arial"
+        lineY += lineHeight
+        ctx.fillText(`tMaxX当前 = ${tMaxX.toFixed(3)}`, calcX + 10, lineY)
+        lineY += lineHeight
+        ctx.fillText(`tMaxY当前 = ${tMaxY.toFixed(3)}`, calcX + 10, lineY)
+        lineY += lineHeight
+        
+        if (tMaxX < tMaxY) {
+            ctx.fillStyle = "#e74c3c"
+            ctx.fillText(`→ 选择X方向 (tMaxX < tMaxY)`, calcX + 10, lineY)
+        } else if (tMaxY < tMaxX) {
+            ctx.fillStyle = "#3498db"
+            ctx.fillText(`→ 选择Y方向 (tMaxY < tMaxX)`, calcX + 10, lineY)
+        } else {
+            ctx.fillText(`→ tMaxX = tMaxY`, calcX + 10, lineY)
+        }
     }
     
-    // 固定的颜色含义说明
-    ctx.fillStyle = "black"
-    ctx.font = "16px Arial"
-    ctx.fillText("颜色含义:", legendX, legendY + 90)
-    ctx.font = "14px Arial"
-    
-    // 红色点含义
-    ctx.fillStyle = "red"
-    ctx.beginPath()
-    ctx.arc(legendX - 50, legendY + 115, 5, 0, Math.PI*2)
-    ctx.fill()
-    ctx.fillStyle = "black"
-    ctx.fillText("红色: X方向网格线交点", legendX + 30, legendY + 120)
-    
-    // 蓝色点含义
-    ctx.fillStyle = "blue"
-    ctx.beginPath()
-    ctx.arc(legendX - 50, legendY + 140, 5, 0, Math.PI*2)
-    ctx.fill()
-    ctx.fillStyle = "black"
-    ctx.fillText("蓝色: Y方向网格线交点", legendX + 30, legendY + 145)
-    
-    // DDA算法说明
-    ctx.fillStyle = "black"
-    ctx.font = "16px Arial"
-    ctx.fillText("DDA算法步骤:", legendX, legendY + 180)
-    ctx.font = "14px Arial"
-    ctx.fillText("1. 比较 tMaxX 与 tMaxY", legendX, legendY + 205)
-    ctx.fillText("2. 选择较小t值的方向", legendX, legendY + 225)
-    ctx.fillText("3. 移动并更新对应的t值", legendX, legendY + 245)
-    
-    // 计算公式说明
-    ctx.fillStyle = "black"
-    ctx.font = "16px Arial"
-    ctx.fillText("计算公式:", legendX, legendY + 280)
-    ctx.font = "14px Arial"
-    
-    // tDelta公式
-    ctx.fillStyle = "#333"
-    ctx.fillText("tDeltaX = 网格大小 / |dx|", legendX, legendY + 305)
-    ctx.fillText("tDeltaY = 网格大小 / |dy|", legendX, legendY + 325)
-    
-    // tMax初始化公式
-    ctx.fillText("tMaxX初始 = (下一X边界 - 起点X) / dx", legendX, legendY + 350)
-    ctx.fillText("tMaxY初始 = (下一Y边界 - 起点Y) / dy", legendX, legendY + 370)
-    
-    // tMax更新公式
-    ctx.fillText("更新规则:", legendX, legendY + 395)
-    ctx.fillText("选择X方向时: tMaxX += tDeltaX", legendX, legendY + 415)
-    ctx.fillText("选择Y方向时: tMaxY += tDeltaY", legendX, legendY + 435)
-    
-    // 当前数值
-    ctx.fillStyle = "#666"
-    ctx.font = "13px Arial"
-    ctx.fillText(`当前: dx=${dx}, dy=${dy}, 网格=${size}`, legendX, legendY + 460)
+    ctx.textAlign = "center"  // 恢复默认对齐方式
     
     // 更新步数信息
     updateStepInfo()
