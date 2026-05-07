@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>Hello, World</title>
+  <style type="text/css">
+    html {
+      height: 100%
+    }
+
+    body {
+      height: 100%;
+      margin: 0px;
+      padding: 0px
+    }
+
+    #container {
+      height: 100%
+    }
+  </style>
+  <script type="text/javascript"
+    src="https://api.map.baidu.com/api?v=1.0&type=webgl&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT">
+    </script>
+</head>
+
+<body>
+  <div id="container"></div>
+  <script type="text/javascript">
+    var map = new BMapGL.Map("container");
+    map.enableScrollWheelZoom();
+
+    var point = new BMapGL.Point(103, 30);
+    map.centerAndZoom(point, 11);
+
+    // const wmtsURL = "http://127.0.0.1:8080/geoserver/gwc/service/wmts" + "?" +
+    //   "SERVICE=WMTS&" +
+    //   "REQUEST=GetTile&" +
+    //   "VERSION=1.0.0&" +
+    //   "LAYER=WMTS_BAIDU:sc_google_3857&" +
+    //   "STYLE=&" +
+    //   "TILEMATRIXSET=EPSG:900913&" +
+    //   "TILEMATRIX=EPSG:900913:[z]&" +
+    //   "TILEROW=[y]&" +
+    //   "TILECOL=[x]&" +
+    //   "FORMAT=image/png"
+
+    const wmtsURL = "http://218.6.196.135:9080/geoserver/WMTS_DOM/gwc/service/wmts" + "?" +
+      "SERVICE=WMTS&" +
+      "REQUEST=GetTile&" +
+      "VERSION=1.0.0&" +
+      "LAYER=WMTS_DOM:DOM_YA&" +
+      "STYLE=&" +
+      "TILEMATRIXSET=EPSG:900913&" +
+      "TILEMATRIX=EPSG:900913:[z]&" +
+      "TILEROW=[y]&" +
+      "TILECOL=[x]&" +
+      "FORMAT=image/png"
+
+    var wmts = BMapGL.XYZLayer({
+      tileUrlTemplate: wmtsURL,
+      useThumbData: true,
+    });
+
+    map.addTileLayer(wmts);
+  </script>
+</body>
+
+</html>

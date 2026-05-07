@@ -61,11 +61,11 @@
 <body>
     <div class="input-group">
         <label>起点:</label>
-        X: <input type="number" id="startX" value="50" min="0" max="600">
-        Y: <input type="number" id="startY" value="80" min="0" max="600">
+        X: <input type="number" id="startX" value="30" min="0" max="600">
+        Y: <input type="number" id="startY" value="30" min="0" max="600">
         <label style="margin-left: 20px;">终点:</label>
         X: <input type="number" id="endX" value="520" min="0" max="600">
-        Y: <input type="number" id="endY" value="130" min="0" max="600">
+        Y: <input type="number" id="endY" value="230" min="0" max="600">
         <button id="applyBtn">应用</button>
     </div>
     <div class="controls">
@@ -85,8 +85,8 @@ const rows = 10
 const size = 60
 
 // ===== 线段 =====
-let start = { x: 50, y: 80 }
-let end   = { x: 520, y: 130 }
+let start = { x: 30, y: 30 }
+let end   = { x: 520, y: 230 }
 
 let dx = end.x - start.x
 let dy = end.y - start.y
@@ -371,8 +371,8 @@ function draw() {
         lineY += lineHeight
         ctx.fillText(`tMaxX初始 = (${nextX} - ${start.x}) / ${dx}`, calcX + 10, lineY)
         lineY += lineHeight
-        ctx.fillText(`       = ${initTMaxX.toFixed(3)}`, calcX + 10, lineY)
-        lineY -= lineHeight
+        ctx.fillText(`= ${initTMaxX.toFixed(3)}`, calcX + 10, lineY)
+        lineY += lineHeight
     }
     lineY += lineHeight
     
@@ -387,7 +387,7 @@ function draw() {
         ctx.fillText(`tMaxY初始 = (${nextY} - ${start.y}) / ${dy}`, calcX + 10, lineY)
         lineY += lineHeight
         ctx.fillText(`       = ${initTMaxY.toFixed(3)}`, calcX + 10, lineY)
-        lineY -= lineHeight
+        lineY += lineHeight
     }
     lineY += lineHeight + 5
     
@@ -488,10 +488,10 @@ document.getElementById("resetBtn").addEventListener("click", reset)
 
 document.getElementById("applyBtn").addEventListener("click", () => {
     // 获取输入值
-    const newStartX = parseInt(document.getElementById("startX").value) || 50
-    const newStartY = parseInt(document.getElementById("startY").value) || 80
+    const newStartX = parseInt(document.getElementById("startX").value) || 30
+    const newStartY = parseInt(document.getElementById("startY").value) || 30
     const newEndX = parseInt(document.getElementById("endX").value) || 520
-    const newEndY = parseInt(document.getElementById("endY").value) || 130
+    const newEndY = parseInt(document.getElementById("endY").value) || 230
     
     // 限制范围
     start.x = Math.max(0, Math.min(600, newStartX))

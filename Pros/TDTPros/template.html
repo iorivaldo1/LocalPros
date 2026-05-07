@@ -39,8 +39,16 @@
 
     <script type="module">
         var map = new T.Map("mapDiv")
-        var zoom = 5;
-        map.centerAndZoom(new T.LngLat(103, 33), zoom);
+        var zoom = 18;
+        // map.centerAndZoom(new T.LngLat(103, 33), zoom);
+        map.centerAndZoom(new T.LngLat(116.404, 39.915), zoom);
+
+        var circle = new T.Circle(
+            new T.LngLat(116.404, 39.915),
+            10,
+            { strokeColor: "red", strokeWeight: 6, fillOpacity: 0.5, fillcolor: "red" }
+        )
+        map.addOverLay(circle)
 
         var ctrl = new T.Control.MapType(
             { position: T_ANCHOR_BOTTOM_RIGHT }

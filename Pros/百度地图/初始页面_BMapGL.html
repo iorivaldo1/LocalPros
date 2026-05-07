@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>Hello, World</title>
+  <style type="text/css">
+    html {
+      height: 100%
+    }
+
+    body {
+      height: 100%;
+      margin: 0px;
+      padding: 0px
+    }
+
+    #container {
+      height: 100%
+    }
+  </style>
+  <script type="text/javascript"
+    src="https://api.map.baidu.com/api?v=1.0&type=webgl&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT">
+    </script>
+</head>
+
+<body>
+  <div id="container"></div>
+  <script type="text/javascript">
+    var map = new BMapGL.Map("container");
+    map.enableScrollWheelZoom();
+
+    // 创建地图实例 
+    var point = new BMapGL.Point(103, 30);
+    // 创建点坐标 
+    map.centerAndZoom(point, 15);
+    // 初始化地图，设置中心点坐标和地图级别
+
+    // WMS 动态瓦片图层：XYZLayer 无法动态计算 BBOX，需改用 TileLayer + getTilesUrl
+    var wmts = new BMapGL.TileLayer({ isTransparentPng: true });
+
+    wmts.getTilesUrl = function (tileCoord, zoom) {
+      var x = tileCoord.x;
+      var y = tileCoord.y;
+      var z = zoom;
+
+      // 1. 百度瓦片坐标 → 百度墨卡托坐标（BD-09MC，单位：米）
+      //    百度 zoom=18 时分辨率为 1m/px，层级 z 时为 2^(18-z) m/px
+      var res = Math.pow(2, 18 - z);
+      var tileSize = 256;
+      var minX_mc = x * tileSize * res;
+      var minY_mc = y * tileSize * res;
+      var maxX_mc = (x + 1) * tileSize * res;
+      var maxY_mc = (y + 1) * tileSize * res;
+
+      // 2. 百度墨卡托 → WGS84 经纬度（近似，忽略 BD-09 偏移量约 300~500m）
+      function mc2wgs84(mx, my) {
+        var R = 20037508.342789244;
+        var lon = mx / R * 180;
+        var lat = Math.atan(Math.exp(my * Math.PI / R)) * 360 / Math.PI - 90;
+        return [lon, lat];
+      }
+
+      var sw = mc2wgs84(minX_mc, minY_mc); // 左下角 [lon, lat]
+      var ne = mc2wgs84(maxX_mc, maxY_mc); // 右上角 [lon, lat]
+
+      // 3. 构建 WMS GetMap 请求 URL（SRS=EPSG:4326，BBOX 为经纬度顺序）
+      var url =
+        'http://218.6.196.135:9080/geoserver/WMS_DOM/wms?' +
+        'Request=GetMap' +
+        '&Service=WMS' +
+        '&Version=1.1.0' +
+        '&LAYERS=WMS_DOM%3ADOM_YA_GOOGLE_18_B3' +
+        '&STYLE=' +
+        '&BBOX=' + sw[0] + ',' + sw[1] + ',' + ne[0] + ',' + ne[1] +
+        '&WIDTH=256' +
+        '&HEIGHT=256' +
+        '&SRS=EPSG%3A4326' +
+        '&FORMAT=image%2Fpng' +
+        '&TRANSPARENT=true';
+
+      return url;
+    };
+
+    // map.addTileLayer(wmts);
+  </script>
+</body>
+
+</html>

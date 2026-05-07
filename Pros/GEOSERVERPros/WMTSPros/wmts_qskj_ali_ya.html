@@ -19,7 +19,7 @@
     <script>
         var map = new T.Map('map', { tileSize: 512 });
         map.centerAndZoom(new T.LngLat(102.607, 30.652), 12);
-        var q = "http://localhost:8180/geoserver/WMTS_F/gwc/service/wmts?SERVICE=WMTS&REQUEST=GetCapabilities"
+        // var q = "http://localhost:8180/geoserver/WMTS_F/gwc/service/wmts?SERVICE=WMTS&REQUEST=GetCapabilities"
 
         // var imageURL =
         //     "http://8.155.1.150:8080/geoserver/WMTS_F/gwc/service/wmts?" +
@@ -36,10 +36,23 @@
             "layer=WMTS_LABEL%3ARIVER_YA_LABEL&style=&tilematrixset=EPSG%3A900913&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image%2Fpng" +
             "&TileMatrix=EPSG%3A900913%3A{z}&TileRow={y}&TileCol={x}";
 
+        const wmtsURL = "http://218.6.196.135:9080/geoserver/WMTS_SHAPE/gwc/service/wmts" + "?" +
+            "SERVICE=WMTS&" +
+            "REQUEST=GetTile&" +
+            "VERSION=1.0.0&" +
+            "LAYER=WMTS_SHAPE:RIVER_YA&" +
+            "STYLE=&" +
+            "TILEMATRIXSET=EPSG:900913&" +
+            "TILEMATRIX=EPSG:900913:{z}&" +
+            "TILEROW={y}&" +
+            "TILECOL={x}&" +
+            "FORMAT=image/png"
+
+
         const southWest = new T.LngLat(101.9642680901, 28.862478591599995);
         const northEast = new T.LngLat(103.4113808093, 30.922261509850014);
         const f_bounds = new T.LngLatBounds(southWest, northEast);
-        var lay = new T.TileLayer(imageURL, { minZoom: 1, maxZoom: 18, bounds: f_bounds });
+        var lay = new T.TileLayer(wmtsURL, { minZoom: 1, maxZoom: 18, bounds: f_bounds });
         console.log(lay)
         lay.setZIndex(1000)
         map.addLayer(lay);

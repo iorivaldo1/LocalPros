@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>百度地图初始页面</title>
+  <style>
+    html,
+    body,
+    #map {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <script src="https://api.map.baidu.com/api?v=3.0&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT"></script>
+  <script>
+    const map = new BMap.Map("map");
+    // 图层名是 sc_baidu（四川），初始视野放到四川范围内更容易看到叠加层
+    const center = new BMap.Point(104.066541, 30.572269);
+    map.centerAndZoom(center, 7);
+    map.enableScrollWheelZoom(true);
+
+    var geoServerWMTSLayer = new BMap.TileLayer({
+      isTransparentPng: true, // 允许加载透明 PNG（适用于业务叠加层）
+    });
+
+    // ================== 坐标转换辅助函数 开始 ==================
+    var PI = 3.1415926535897932384626;
+    var a = 6378245.0;
+    var ee = 0.00669342162296594323;
+
+    function transformlat(lng, lat) {
+      var ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng));
+      ret += (20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0 / 3.0;
+      ret += (20.0 * Math.sin(lat * PI) + 40.0 * Math.sin(lat / 3.0 * PI)) * 2.0 / 3.0;
+      ret += (160.0 * Math.sin(lat / 12.0 * PI) + 320 * Math.sin(lat * PI / 30.0)) * 2.0 / 3.0;
+      return ret;
+    }
+
+    function transformlng(lng, lat) {
+      var ret = 300.0 + lng + 2.0 * lat + 0.1 * lng * lng + 0.1 * lng * lat + 0.1 * Math.sqrt(Math.abs(lng));
+      ret += (20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0 / 3.0;
+      ret += (20.0 * Math.sin(lng * PI) + 40.0 * Math.sin(lng / 3.0 * PI)) * 2.0 / 3.0;
+      ret += (150.0 * Math.sin(lng / 12.0 * PI) + 300.0 * Math.sin(lng / 30.0 * PI)) * 2.0 / 3.0;
+      return ret;
+    }
+
+    // BD-09 to GCJ-02
+    function bd09togcj02(bd_lon, bd_lat) {
+      var x_pi = 3.14159265358979324 * 3000.0 / 180.0;
+      var x = bd_lon - 0.0065;
+      var y = bd_lat - 0.006;
+      var z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * x_pi);
+      var theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * x_pi);
+      var gg_lng = z * Math.cos(theta);
+      var gg_lat = z * Math.sin(theta);
+      return [gg_lng, gg_lat];
+    }
+
+    // GCJ-02 to WGS-84
+    function gcj02towgs84(lng, lat) {
+      var dlat = transformlat(lng - 105.0, lat - 35.0);
+      var dlng = transformlng(lng - 105.0, lat - 35.0);
+      var radlat = lat / 180.0 * PI;
+      var magic = Math.sin(radlat);
+      magic = 1 - ee * magic * magic;
+      var sqrtmagic = Math.sqrt(magic);
+      dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * PI);
+      dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * PI);
+      var mglat = lat + dlat;
+      var mglng = lng + dlng;
+      return [lng * 2 - mglng, lat * 2 - mglat];
+    }
+
+    function bd09ToWgs84(lng, lat) {
+      var gcj = bd09togcj02(lng, lat);
+      return gcj02towgs84(gcj[0], gcj[1]);
+    }
+    // ================== 坐标转换辅助函数 结束 ==================
+
+    let wmtsDebugCount = 0;
+    geoServerWMTSLayer.getTilesUrl = function (tileCoord, zoom) {
+      var x = tileCoord.x;
+      var y = tileCoord.y;
+      
+      // 1. 获取当前瓦片的左下角和右上角在百度平面坐标系中的坐标（米）
+      // 百度地图 zoom=18 时，1像素约等于1米。每像素代表 Math.pow(2, 18 - zoom) 米。
+      var res = Math.pow(2, 18 - zoom);
+      var minX = x * 256 * res;
+      var minY = y * 256 * res;
+      var maxX = (x + 1) * 256 * res;
+      var maxY = (y + 1) * 256 * res;
+
+      // 2. 将百度平面坐标转换为百度经纬度 (BD-09)
+      var proj = map.getMapType().getProjection();
+      var ptMin = proj.pointToLngLat(new BMap.Pixel(minX, minY));
+      var ptMax = proj.pointToLngLat(new BMap.Pixel(maxX, maxY));
+
+      // 3. 将 BD-09 经纬度转换为标准 WGS-84 经纬度
+      var wgsMin = bd09ToWgs84(ptMin.lng, ptMin.lat);
+      var wgsMax = bd09ToWgs84(ptMax.lng, ptMax.lat);
+
+      // 4. 构建 GeoServer WMS 动态出图请求 URL (不再使用预切片的 WMTS)
+      // 注意 URL 去掉了 gwc/service，直接访问原始 WMS
+      var geoserverUrl = "http://127.0.0.1:8080/geoserver/wms";
+      var layerName = "WMTS_BAIDU:sc_baidu"; // 替换为你的 workspace:layer_name
+      
+      // 构造 BBOX: minLng,minLat,maxLng,maxLat (WMS 1.1.0 标准 EPSG:4326 顺序)
+      var bbox = wgsMin[0] + "," + wgsMin[1] + "," + wgsMax[0] + "," + wgsMax[1];
+
+      var url = geoserverUrl +
+        "?SERVICE=WMS" +
+        "&VERSION=1.1.0" +
+        "&REQUEST=GetMap" +
+        "&FORMAT=image/png" +
+        "&TRANSPARENT=true" +
+        "&LAYERS=" + layerName +
+        "&SRS=EPSG:4326" +
+        "&WIDTH=256" +
+        "&HEIGHT=256" +
+        "&BBOX=" + bbox;
+
+      if (wmtsDebugCount < 10) {
+        console.log("WMS 请求URL:", url);
+        wmtsDebugCount++;
+      }
+
+      return url;
+    };
+
+
+    map.addTileLayer(geoServerWMTSLayer);
+  </script>
+</body>
+
+</html>
