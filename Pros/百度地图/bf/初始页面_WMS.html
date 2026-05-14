@@ -24,7 +24,7 @@
   <script>
     const map = new BMap.Map("map");
     // 图层名是 sc_baidu（四川），初始视野放到四川范围内更容易看到叠加层
-    const center = new BMap.Point(104.066541, 30.572269);
+    const center = new BMap.Point(103,30);
     map.centerAndZoom(center, 7);
     map.enableScrollWheelZoom(true);
 
@@ -111,7 +111,8 @@
       // 4. 构建 GeoServer WMS 动态出图请求 URL (不再使用预切片的 WMTS)
       // 注意 URL 去掉了 gwc/service，直接访问原始 WMS
       var geoserverUrl = "http://127.0.0.1:8080/geoserver/wms";
-      var layerName = "WMTS_BAIDU:sc_baidu"; // 替换为你的 workspace:layer_name
+      // var layerName = "WMS_DOM:sc_cut_4326_fixed"; // 替换为你的 workspace:layer_name
+      var layerName = "WMS_XZQ:XZQ_SC_CITY"; // 替换为你的 workspace:layer_name
       
       // 构造 BBOX: minLng,minLat,maxLng,maxLat (WMS 1.1.0 标准 EPSG:4326 顺序)
       var bbox = wgsMin[0] + "," + wgsMin[1] + "," + wgsMax[0] + "," + wgsMax[1];
@@ -128,10 +129,10 @@
         "&HEIGHT=256" +
         "&BBOX=" + bbox;
 
-      if (wmtsDebugCount < 10) {
-        console.log("WMS 请求URL:", url);
-        wmtsDebugCount++;
-      }
+      // if (wmtsDebugCount < 10) {
+      //   console.log("WMS 请求URL:", url);
+      //   wmtsDebugCount++;
+      // }
 
       return url;
     };

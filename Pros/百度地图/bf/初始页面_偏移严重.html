@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>百度地图初始页面</title>
+  <style>
+    html,
+    body,
+    #map {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <script src="https://api.map.baidu.com/api?v=3.0&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT"></script>
+  <script>
+    // ============================================================
+    // BD-09MC → WGS-84 坐标转换（用于计算 WMS BBOX）
+    // ============================================================
+    var PI = Math.PI;
+    var A = 6378245.0;
+    var EE = 0.00669342162296594323;
+
+    function bd09mc_to_bd09ll(x, y) {
+      // BD-09MC（墨卡托，单位米）→ BD-09LL（经纬度，单位度）
+      var lng = x / 20037508.3427892 * 180;
+      var lat = y / 20037508.3427892 * 180;
+      lat = 180 / PI * (2 * Math.atan(Math.exp(lat * PI / 180)) - PI / 2);
+      return [lng, lat];
+    }
+
+    function bd09ll_to_gcj02(lng, lat) {
+      var x = lng - 0.0065;
+      var y = lat - 0.006;
+      var z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * PI * 3000.0 / 180.0);
+      var theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * PI * 3000.0 / 180.0);
+      return [z * Math.cos(theta), z * Math.sin(theta)];
+    }
+
+    function gcj02_to_wgs84(lng, lat) {
+      if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) {
+        return [lng, lat];
+      }
+      var dLat = transformLat(lng - 105.0, lat - 35.0);
+      var dLng = transformLng(lng - 105.0, lat - 35.0);
+      var radLat = lat / 180.0 * PI;
+      var magic = Math.sin(radLat);
+      magic = 1 - EE * magic * magic;
+      var sqrtMagic = Math.sqrt(magic);
+      dLat = (dLat * 180.0) / ((A * (1 - EE)) / (magic * sqrtMagic) * PI);
+      dLng = (dLng * 180.0) / (A / sqrtMagic * Math.cos(radLat) * PI);
+      return [lng - dLng, lat - dLat];
+    }
+
+    function transformLat(x, y) {
+      var ret = -100.0 + 2.0*x + 3.0*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+      ret += (20.0*Math.sin(6.0*x*PI) + 20.0*Math.sin(2.0*x*PI)) * 2.0/3.0;
+      ret += (20.0*Math.sin(y*PI) + 40.0*Math.sin(y/3.0*PI)) * 2.0/3.0;
+      ret += (160.0*Math.sin(y/12.0*PI) + 320*Math.sin(y*PI/30.0)) * 2.0/3.0;
+      return ret;
+    }
+
+    function transformLng(x, y) {
+      var ret = 300.0 + x + 2.0*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+      ret += (20.0*Math.sin(6.0*x*PI) + 20.0*Math.sin(2.0*x*PI)) * 2.0/3.0;
+      ret += (20.0*Math.sin(x*PI) + 40.0*Math.sin(x/3.0*PI)) * 2.0/3.0;
+      ret += (150.0*Math.sin(x/12.0*PI) + 300.0*Math.sin(x/30.0*PI)) * 2.0/3.0;
+      return ret;
+    }
+
+    // BD-09MC（米）→ WGS-84（度）
+    function bd09mc_to_wgs84(mx, my) {
+      var bd09ll = bd09mc_to_bd09ll(mx, my);
+      var gcj02  = bd09ll_to_gcj02(bd09ll[0], bd09ll[1]);
+      return gcj02_to_wgs84(gcj02[0], gcj02[1]);
+    }
+
+    // ============================================================
+    // 百度瓦片坐标 → BD-09MC 范围（单位：米）
+    // ============================================================
+    function baiduTile_to_bd09mc_bbox(x, y, z) {
+      // 百度瓦片原点 (0,0) 在地图中心（BD-09MC 原点），Y 轴向上
+      // 百度 zoom z 对应标准 zoom z-1，故用 2^(z-1) 计算瓦片宽度
+      var tileWidth_mc = 20037508.3427892 * 2 / Math.pow(2, z - 1);
+      var minX_mc = x * tileWidth_mc;
+      var minY_mc = y * tileWidth_mc;
+      var maxX_mc = (x + 1) * tileWidth_mc;
+      var maxY_mc = (y + 1) * tileWidth_mc;
+      return { minX: minX_mc, minY: minY_mc, maxX: maxX_mc, maxY: maxY_mc };
+    }
+
+    // WGS-84 LL（度）→ WGS-84 墨卡托（米）EPSG:900913
+    function wgs84ll_to_mc(lng, lat) {
+      var x = lng / 180 * 20037508.3427892;
+      var y = Math.log(Math.tan((90 + lat) * PI / 360)) / PI * 20037508.3427892;
+      return [x, y];
+    }
+
+    // ============================================================
+    // 初始化地图
+    // ============================================================
+    var map = new BMap.Map("map");
+    map.centerAndZoom(new BMap.Point(103, 30), 7);
+    map.enableScrollWheelZoom();
+
+    // ============================================================
+    // WMS 图层（使用原始 WGS-84 数据，动态 BBOX 转换）
+    // ============================================================
+    var wmsLayer = new BMap.TileLayer({ isTransparentPng: true });
+
+    wmsLayer.getTilesUrl = function (tileCoord, zoom) {
+      var bbox = baiduTile_to_bd09mc_bbox(tileCoord.x, tileCoord.y, zoom);
+
+      // BD-09MC 四角 → WGS-84 LL → WGS-84 墨卡托（EPSG:900913）
+      var sw_ll = bd09mc_to_wgs84(bbox.minX, bbox.minY);
+      var ne_ll = bd09mc_to_wgs84(bbox.maxX, bbox.maxY);
+      var sw_mc = wgs84ll_to_mc(sw_ll[0], sw_ll[1]);
+      var ne_mc = wgs84ll_to_mc(ne_ll[0], ne_ll[1]);
+
+      // BBOX 单位：米（WGS-84 墨卡托）
+      var mcBbox = sw_mc[0] + "," + sw_mc[1] + "," + ne_mc[0] + "," + ne_mc[1];
+
+      var url = "http://127.0.0.1:8080/geoserver/WMS_XZQ/wms?" +
+        "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap" +
+        "&LAYERS=WMS_XZQ:XZQ_SC_CITY" +
+        "&FORMAT=image/png&TRANSPARENT=true" +
+        "&SRS=EPSG:900913" +
+        "&WIDTH=256&HEIGHT=256" +
+        "&BBOX=" + mcBbox;
+
+      return url;
+    };
+
+    map.addTileLayer(wmsLayer);
+  </script>
+</body>
+
+</html>

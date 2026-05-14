@@ -5,9 +5,10 @@
     <meta charset="utf-8">
     <title>天地图加载GeoServer WMS</title>
     <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
     <style>
         #map {
-            position:absolute;
+            position: absolute;
             width: 100%;
             height: 100%;
         }
@@ -23,17 +24,19 @@
 
         var imageURL =
             'http://localhost:8080/geoserver/WMTS_F/gwc/service/wmts?' +
-            'Request=GetTile' + 
-            '&Service=WMTS' + 
-            '&Version=1.0.0' + 
-            '&LAYER=WMTS_F%3Ariv_ya' + 
-            '&STYLE=' + 
-            '&Format=image%2Fpng' + 
-            '&TILEMATRIXSET=EPSG%3A900913' + 
-            '&TILEMATRIX=EPSG%3A900913%3A{z}' + 
-            '&TILEROW={y}' + 
-            '&TILECOL={x}' + 
-            '&authkey=' + '9cdfeadf8dfd3b043'
+            'Request=GetTile' +
+            '&Service=WMTS' +
+            '&Version=1.0.0' +
+            '&LAYER=WMTS_F%3ARIVER_YA' +
+            '&STYLE=' +
+            '&Format=image%2Fpng' +
+            '&TILEMATRIXSET=EPSG%3A900913' +
+            '&TILEMATRIX=EPSG%3A900913%3A{z}' +
+            '&TILEROW={y}' +
+            '&TILECOL={x}' +
+            // '&authkey=' + '9cdfeadf8dfd3b043'
+            '&authkey=' + 'd0c56da2-ca25-4c0f-9b59-83525ff33eb4'
+
 
         const southWest = new T.LngLat(101.9642680901, 28.862478591599995);
         const northEast = new T.LngLat(103.4113808093, 30.922261509850014);
@@ -42,9 +45,31 @@
         lay.setZIndex(1000)
         map.addLayer(lay);
 
-        map.addEventListener('zoomend',function(){
+        map.addEventListener('zoomend', function () {
             console.log('zoom' + map.getZoom())
         })
+
+        // 探查 GeoServer 可用的 Security REST 端点
+        // var authHeader = { 
+        //     'Authorization': 'Basic ' + btoa('admin:13882065851fch'),
+        //     'Accept': 'application/json'
+        // };
+
+        // var candidateUrls = [
+        //     'http://localhost:8080/geoserver/rest/security/usergroup/users/testUser1.json',
+        //     'http://localhost:8080/geoserver/rest/security/usergroup/service/default/users/testUser1.json',
+        //     'http://localhost:8080/geoserver/rest/security/usergroup/users.json',
+        // ];
+
+        // candidateUrls.forEach(url => {
+        //     $.ajax({
+        //         url: url, method: 'GET', headers: authHeader,
+        //         success: res => console.log('✅ 有效:', url, res),
+        //         error: err => console.log('❌', err.status, url)
+        //     })
+        // })
+
+
 
     </script>
 </body>

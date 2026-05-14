@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/Public/js/jquery-3.7.1.min.js"></script>
+  <script src="/Public/js/baiduUtills.js"></script>
+  <title>百度地图初始页面</title>
+  <style>
+    html,
+    body,
+    #map {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #testButton {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      width: 100px;
+      height: 30px;
+      background-color: blue;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 9999;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+  <button id="testButton">测试按钮</button>
+  
+  <script src="https://api.map.baidu.com/api?v=3.0&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT"></script>
+  <script>
+    const map = new BMap.Map("map");
+    const center = new BMap.Point(105, 30);
+    map.centerAndZoom(center, 18);
+    map.enableScrollWheelZoom(true);
+
+    var geoServerWMTSLayer = new BMap.TileLayer({
+      isTransparentPng: true, // 允许加载透明 PNG（适用于业务叠加层）
+    });
+    
+    geoServerWMTSLayer.getTilesUrl = function (tileCoord, zoom) {
+      var x = tileCoord.x;
+      var y = tileCoord.y;
+
+      // 百度分辨率：zoom=18 时 1px=1m，每降一级翻倍
+      var res = Math.pow(2, 18 - zoom);
+      var minX = x * 256 * res;
+      var minY = y * 256 * res;
+      var maxX = (x + 1) * 256 * res;
+      var maxY = (y + 1) * 256 * res;
+
+      // 用 Canvas 绘制调试瓦片
+      var canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      var ctx = canvas.getContext('2d');
+
+      // 背景（半透明白色）+ 边框
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(1, 1, 254, 254);
+
+      // 十字线标记中心
+      ctx.strokeStyle = 'rgba(0, 120, 255, 0.5)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(128, 0); ctx.lineTo(128, 256);
+      ctx.moveTo(0, 128); ctx.lineTo(256, 128);
+      ctx.stroke();
+
+      // 文字内容
+      var fmt = function(v) { return Math.round(v); };
+      var lines = [
+        'tileIndex: (' + x + ', ' + y + ')',
+        'zoom: ' + zoom,
+        'minX: ' + fmt(minX),
+        'minY: ' + fmt(minY),
+        'maxX: ' + fmt(maxX),
+        'maxY: ' + fmt(maxY),
+      ];
+
+      ctx.fillStyle = '#1a1a1a';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      var lineHeight = 16;
+      var startY = 128 - (lines.length - 1) * lineHeight / 2;
+      lines.forEach(function(line, i) {
+        // 文字描边（白色轮廓，提高可读性）
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(line, 128, startY + i * lineHeight);
+        ctx.fillText(line, 128, startY + i * lineHeight);
+      });
+
+      return canvas.toDataURL('image/png');
+    };
+
+
+    map.addTileLayer(geoServerWMTSLayer);
+
+    $("#testButton").click(function () {
+      console.log(map.getZoom());
+    });
+
+  </script>
+</body>
+
+</html>

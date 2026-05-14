@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/Public/js/jquery-3.7.1.min.js"></script>
+  <script src="/Public/js/baiduUtills.js"></script>
+  <title>百度地图初始页面</title>
+  <style>
+    html,
+    body,
+    #map {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #testButton {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      width: 100px;
+      height: 30px;
+      background-color: blue;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 9999;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+  <button id="testButton">测试按钮</button>
+
+  <script src="https://api.map.baidu.com/api?v=3.0&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT"></script>
+  <script>
+    // ---- 配置常量 ----
+    const GEOSERVER_URL = "http://218.6.196.135:9080/geoserver/wms";
+
+    /**
+     * 工厂函数：创建 WMS 瓦片图层
+     * @param {string} layerName - GeoServer 图层名
+     */
+    function createWmsLayer(layerName) {
+      const layer = new BMap.TileLayer({ isTransparentPng: true });
+
+      layer.getTilesUrl = function (tileCoord, zoom) {
+        const x = tileCoord.x;
+        const y = tileCoord.y;
+        const res = 1 << (18 - zoom); // 等价于 Math.pow(2, 18 - zoom)，zoom 为整数时更高效
+        const minX = x * 256 * res;
+        const minY = y * 256 * res;
+        const maxX = (x + 1) * 256 * res;
+        const maxY = (y + 1) * 256 * res;
+        const ptMin = bd09mcToLngLat(minX, minY);
+        const ptMax = bd09mcToLngLat(maxX, maxY);
+        const wgsMin = bd09ToWgs84(ptMin.lng, ptMin.lat);
+        const wgsMax = bd09ToWgs84(ptMax.lng, ptMax.lat);
+        const bbox = `${wgsMin[0]},${wgsMin[1]},${wgsMax[0]},${wgsMax[1]}`;
+
+        const params = new URLSearchParams({
+          SERVICE: "WMS",
+          VERSION: "1.1.0",
+          REQUEST: "GetMap",
+          FORMAT: "image/png",
+          TRANSPARENT: true,
+          LAYERS: layerName,
+          SRS: "EPSG:4326",
+          WIDTH: 256,
+          HEIGHT: 256,
+          BBOX: bbox,
+        });
+
+        return `${GEOSERVER_URL}?${params}`;
+      };
+
+      return layer;
+    }
+
+    // ---- 地图初始化 ----
+    const map = new BMap.Map("map");
+    const center = new BMap.Point(104, 30.7);
+    map.centerAndZoom(center, 8);
+    map.enableScrollWheelZoom(true);
+
+    map.setMapStyleV2({
+      styleJson: [
+        { "featureType": "districtlabel", "elementType": "all", "stylers": { "visibility": "off" } }
+      ]
+    });
+
+    // ---- 添加图层 ----
+    map.addTileLayer(createWmsLayer("WMS_DOM:sc_4326_lv14_imagesomaic"));
+    map.addTileLayer(createWmsLayer("WMS_XZQ:XZQ_SC"));
+
+  </script>
+</body>
+
+</html>

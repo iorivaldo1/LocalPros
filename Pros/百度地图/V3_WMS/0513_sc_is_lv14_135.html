@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/Public/js/jquery-3.7.1.min.js"></script>
+  <script src="/Public/js/baiduUtills.js"></script>
+  <title>百度地图初始页面</title>
+  <style>
+    html,
+    body,
+    #map {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #testButton {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      width: 100px;
+      height: 30px;
+      background-color: blue;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 9999;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+  <button id="testButton">测试按钮</button>
+
+  <script src="https://api.map.baidu.com/api?v=3.0&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT"></script>
+  <script>
+    const map = new BMap.Map("map");
+    const center = new BMap.Point(104, 30.7);
+    map.centerAndZoom(center, 8);
+    map.enableScrollWheelZoom(true);
+
+    map.setMapStyleV2({
+      styleJson: [
+        { "featureType": "districtlabel", "elementType": "all", "stylers": { "visibility": "off" } }
+      ]
+    });
+
+    var geoServerWMTSLayer = new BMap.TileLayer({
+      isTransparentPng: true, // 允许加载透明 PNG（适用于业务叠加层）
+    });
+
+    let wmtsDebugCount = 0;
+    geoServerWMTSLayer.getTilesUrl = function (tileCoord, zoom) {
+      //x,y是百度墨卡托坐标: BD-09MC
+      var x = tileCoord.x;
+      var y = tileCoord.y;
+
+      var res = Math.pow(2, 18 - zoom);
+      var minX = x * 256 * res;
+      var minY = y * 256 * res;
+      var maxX = (x + 1) * 256 * res;
+      var maxY = (y + 1) * 256 * res;
+
+      //百度墨卡托 转 百度经纬度: BD-09MC -> BD-09
+      var ptMin = bd09mcToLngLat(minX, minY)
+      var ptMax = bd09mcToLngLat(maxX, maxY)
+
+      //百度经纬度 转 WGS84经纬度: BD-09 -> WGS84
+      var wgsMin = bd09ToWgs84(ptMin.lng, ptMin.lat);
+      var wgsMax = bd09ToWgs84(ptMax.lng, ptMax.lat);
+
+      var geoserverUrl = "http://218.6.196.135:9080/geoserver/wms";
+      var layerName = "WMS_DOM:sc_4326_lv14_imagesomaic";
+
+      var bbox = wgsMin[0] + "," + wgsMin[1] + "," + wgsMax[0] + "," + wgsMax[1];
+
+      var url = geoserverUrl +
+        "?SERVICE=WMS" +
+        "&VERSION=1.1.0" +
+        "&REQUEST=GetMap" +
+        "&FORMAT=image/png" +
+        "&TRANSPARENT=true" +
+        "&LAYERS=" + layerName +
+        "&SRS=EPSG:4326" +
+        "&WIDTH=256" +
+        "&HEIGHT=256" +
+        "&BBOX=" + bbox;
+
+      return url;
+    };
+    map.addTileLayer(geoServerWMTSLayer);
+  </script>
+</body>
+
+</html>

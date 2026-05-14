@@ -58,12 +58,19 @@
       "TILECOL=[x]&" +
       "FORMAT=image/png"
 
-    var wmts = BMapGL.XYZLayer({
+    var wmts = new BMapGL.XYZLayer({
       tileUrlTemplate: wmtsURL,
       useThumbData: true,
+      extentCRSIsWGS84:true,
+      extent:[102.89800198, 29.885822222,103.39800198, 30.385822222]
     });
 
     map.addTileLayer(wmts);
+
+    var test = new BMapGL.Boundary();
+    test.get("雅安市", function (rs) {
+      console.log(rs);
+    });
   </script>
 </body>
 

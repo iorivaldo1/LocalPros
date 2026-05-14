@@ -38,9 +38,9 @@
 
         // 创建WMS图层
         var wmsLayer = new T.TileLayer.WMS(
-            'http://8.155.1.150:8080/geoserver/WMTS_F/wms',
+            'http://8.155.1.150:8080/geoserver/wms',
             {
-                layers: 'WMTS_F:RIVER_YA',
+                layers: 'WMS_DOM:ya',
                 format: 'image/png',
                 transparent: true,
                 version: '1.1.1',

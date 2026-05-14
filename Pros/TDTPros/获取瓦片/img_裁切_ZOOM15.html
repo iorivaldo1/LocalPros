@@ -195,6 +195,7 @@
             });
         }
 
+        //高斯-克吕格投影转Web墨卡托
         function lngLatToTile(lng, lat, zoom) {
             const x = (lng + 180) / 360;
             const y = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
@@ -206,6 +207,7 @@
             return [tileCol, tileRow];
         }
 
+        //墨卡托转高斯-克吕格投影
         function tileToLngLat(tileCol, tileRow, zoom) {
             const n = Math.pow(2, zoom);
             const lng = tileCol / n * 360 - 180;
